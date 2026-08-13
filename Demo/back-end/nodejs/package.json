@@ -1,0 +1,12 @@
+{
+  "name": "dspay-mock-merchant",
+  "version": "1.0.0",
+  "description": "DSPay 模拟商户接入工程：创建订单跳转收银台 + 接收回调验签",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

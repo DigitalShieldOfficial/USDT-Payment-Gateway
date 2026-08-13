@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f7fb" />
+    <title>Nova Store - Digital Goods Checkout Demo</title>
+    <style>
+      :root {
+        color: #18213b;
+        background: #f4f7fb;
+        font-family:
+          Inter,
+          "PingFang SC",
+          "Microsoft YaHei",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        font-synthesis: none;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-width: 320px;
+        min-height: 100vh;
+        margin: 0;
+        background:
+          radial-gradient(circle at 12% 10%, rgba(84, 132, 255, 0.12), transparent 30%),
+          radial-gradient(circle at 92% 92%, rgba(113, 81, 255, 0.1), transparent 28%), #f4f7fb;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .page {
+        width: min(100% - 32px, 1080px);
+        margin: 0 auto;
+        padding: 28px 0 48px;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 44px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #17203a;
+        font-size: 18px;
+        font-weight: 750;
+        letter-spacing: -0.02em;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 12px;
+        color: #fff;
+        background: linear-gradient(145deg, #2c77ff, #7047ef);
+        box-shadow: 0 10px 22px rgba(57, 92, 224, 0.22);
+      }
+
+      .brand-mark::before {
+        width: 16px;
+        height: 16px;
+        border: 3px solid currentColor;
+        border-radius: 50%;
+        content: "";
+        box-shadow: 7px -5px 0 -5px currentColor;
+      }
+
+      .secure {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #75809d;
+        font-size: 13px;
+      }
+
+      .secure-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #27b67a;
+        box-shadow: 0 0 0 4px rgba(39, 182, 122, 0.12);
+      }
+
+      .checkout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+        gap: 28px;
+        align-items: start;
+      }
+
+      .hero {
+        padding: 36px;
+        border: 1px solid rgba(84, 104, 160, 0.1);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.78);
+        box-shadow: 0 22px 60px rgba(32, 51, 94, 0.09);
+        backdrop-filter: blur(18px);
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: #386bdb;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 510px;
+        margin: 0;
+        color: #18213b;
+        font-size: clamp(32px, 5vw, 54px);
+        line-height: 1.08;
+        letter-spacing: -0.045em;
+      }
+
+      .description {
+        max-width: 520px;
+        margin: 18px 0 30px;
+        color: #697490;
+        font-size: 16px;
+        line-height: 1.75;
+      }
+
+      .product-art {
+        position: relative;
+        display: grid;
+        min-height: 240px;
+        place-items: center;
+        overflow: hidden;
+        border-radius: 22px;
+        background:
+          radial-gradient(circle at center, rgba(255, 255, 255, 0.46), transparent 42%),
+          linear-gradient(135deg, #346ee7 0%, #7350e8 55%, #1f2d64 100%);
+      }
+
+      .product-art::before,
+      .product-art::after {
+        position: absolute;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 50%;
+        content: "";
+      }
+
+      .product-art::before {
+        width: 330px;
+        height: 330px;
+      }
+
+      .product-art::after {
+        width: 190px;
+        height: 190px;
+      }
+
+      .pass {
+        position: relative;
+        z-index: 1;
+        width: min(74%, 340px);
+        padding: 22px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 20px;
+        color: #fff;
+        background: rgba(16, 24, 63, 0.42);
+        box-shadow: 0 26px 70px rgba(14, 20, 60, 0.35);
+        backdrop-filter: blur(14px);
+        transform: rotate(-4deg);
+      }
+
+      .pass-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 34px;
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .pass-orbit {
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.38);
+        border-radius: 50%;
+      }
+
+      .pass-orbit::after {
+        width: 16px;
+        height: 16px;
+        border: 2px solid white;
+        border-radius: 50%;
+        content: "";
+      }
+
+      .pass-name {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 760;
+        letter-spacing: -0.03em;
+      }
+
+      .pass-meta {
+        margin-top: 6px;
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 12px;
+      }
+
+      .summary {
+        position: sticky;
+        top: 24px;
+        padding: 28px;
+        border: 1px solid rgba(84, 104, 160, 0.1);
+        border-radius: 24px;
+        background: #fff;
+        box-shadow: 0 22px 60px rgba(32, 51, 94, 0.1);
+      }
+
+      .summary h2 {
+        margin: 0 0 24px;
+        font-size: 20px;
+        letter-spacing: -0.025em;
+      }
+
+      .product-line {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding-bottom: 22px;
+        border-bottom: 1px solid #edf0f6;
+      }
+
+      .thumb {
+        display: grid;
+        width: 60px;
+        height: 60px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 16px;
+        color: #fff;
+        background: linear-gradient(145deg, #3378ff, #6f4bec);
+        font-size: 22px;
+        box-shadow: 0 9px 20px rgba(69, 91, 216, 0.2);
+      }
+
+      .product-copy {
+        min-width: 0;
+      }
+
+      .product-copy strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 15px;
+      }
+
+      .product-copy span {
+        color: #7d87a1;
+        font-size: 12px;
+      }
+
+      .detail-list {
+        display: grid;
+        gap: 14px;
+        margin: 22px 0;
+      }
+
+      .detail-row,
+      .total {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .detail-row {
+        color: #7c86a0;
+        font-size: 13px;
+      }
+
+      .detail-row strong {
+        color: #303952;
+        font-weight: 600;
+      }
+
+      .total {
+        padding-top: 20px;
+        border-top: 1px solid #edf0f6;
+      }
+
+      .total span {
+        color: #58637d;
+        font-size: 14px;
+      }
+
+      .price {
+        color: #17203a;
+        font-size: 30px;
+        font-weight: 780;
+        letter-spacing: -0.04em;
+      }
+
+      .price small {
+        margin-left: 4px;
+        color: #69748e;
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: 0;
+      }
+
+      .pay-button {
+        width: 100%;
+        height: 54px;
+        margin-top: 24px;
+        border: 0;
+        border-radius: 14px;
+        color: #fff;
+        background: linear-gradient(135deg, #1266f1, #5847dd);
+        box-shadow: 0 15px 30px rgba(42, 88, 218, 0.24);
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          opacity 160ms ease;
+      }
+
+      .pay-button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 18px 34px rgba(42, 88, 218, 0.3);
+      }
+
+      .pay-button:active {
+        transform: translateY(0);
+      }
+
+      .pay-button:disabled {
+        cursor: wait;
+        opacity: 0.72;
+      }
+
+      .note {
+        margin: 14px 0 0;
+        color: #929bb0;
+        font-size: 11px;
+        line-height: 1.6;
+        text-align: center;
+      }
+
+      @media (max-width: 820px) {
+        .page {
+          padding-top: 20px;
+        }
+
+        .header {
+          margin-bottom: 26px;
+        }
+
+        .checkout {
+          grid-template-columns: 1fr;
+        }
+
+        .hero {
+          padding: 24px;
+        }
+
+        .summary {
+          position: static;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .page {
+          width: min(100% - 24px, 1080px);
+        }
+
+        .secure {
+          display: none;
+        }
+
+        .hero {
+          padding: 20px;
+          border-radius: 22px;
+        }
+
+        .product-art {
+          min-height: 210px;
+        }
+
+        .pass {
+          width: 82%;
+        }
+
+        .summary {
+          padding: 22px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .pay-button {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>Nova Store</span>
+        </div>
+        <div class="secure">
+          <span class="secure-dot" aria-hidden="true"></span>
+          <span>Digital Product · Instant Delivery</span>
+        </div>
+      </header>
+
+      <div class="checkout">
+        <section class="hero" aria-labelledby="product-title">
+          <p class="eyebrow">Digital Access Pass</p>
+          <h1 id="product-title">Starbound Adventure<br />Lifetime Pass</h1>
+          <p class="description">
+            One purchase unlocks every star system, exclusive character styles, and all future
+            content updates. Your access pass will be delivered to your account as soon as payment
+            is complete.
+          </p>
+
+          <div class="product-art" aria-hidden="true">
+            <div class="pass">
+              <div class="pass-top">
+                <span>Nova Universe</span>
+                <span class="pass-orbit"></span>
+              </div>
+              <p class="pass-name">Lifetime Access</p>
+              <div class="pass-meta">NO EXPIRATION · DIGITAL DELIVERY</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="summary" aria-labelledby="summary-title">
+          <h2 id="summary-title">Order Summary</h2>
+
+          <div class="product-line">
+            <div class="thumb" aria-hidden="true">✦</div>
+            <div class="product-copy">
+              <strong>Starbound Adventure · Lifetime Pass</strong>
+              <span>Digital item × 1</span>
+            </div>
+          </div>
+
+          <div class="detail-list">
+            <div class="detail-row">
+              <span>Delivery</span>
+              <strong>Instant after payment</strong>
+            </div>
+            <div class="detail-row">
+              <span>Validity</span>
+              <strong>Lifetime</strong>
+            </div>
+            <div class="detail-row">
+              <span>Product ID</span>
+              <strong>NOVA-LIFETIME-001</strong>
+            </div>
+          </div>
+
+          <div class="total">
+            <span>Amount Due</span>
+            <strong class="price">0.02 <small>USD</small></strong>
+          </div>
+
+          <button class="pay-button" id="pay-button" type="button">Pay Now</button>
+          <p class="note">You will be redirected to the Digital Shield Pay order creation page</p>
+        </aside>
+      </div>
+    </main>
+
+    <script>
+      const CREATE_ORDER_URL = "http://localhost:3000/create?payAmount=0.02&productPrice=0.02&productPriceCurrency=USD&productId=NOVA-LIFETIME-001";
+
+      const payButton = document.querySelector("#pay-button");
+
+      payButton.addEventListener("click", () => {
+        const createOrderUrl = new URL(CREATE_ORDER_URL);
+
+        payButton.disabled = true;
+        payButton.textContent = "Redirecting to order creation…";
+        window.location.assign(createOrderUrl.toString());
+      });
+    </script>
+  </body>
+</html>
