@@ -7,7 +7,7 @@
 
 <h3 align="center">
   官方网站：<a href="https://ds.pro/pay">ds.pro</a><br /><br />
-  <a href="./README.en-US.md">English</a>&nbsp;&nbsp;|&nbsp;&nbsp;<strong>简体中文</strong>
+  <a href="./README.md">English</a>&nbsp;&nbsp;|&nbsp;&nbsp;<strong>简体中文</strong>
 </h3>
 
 <p align="center">
