@@ -1,9 +1,9 @@
 ## language
-[English](https://github.com/DigitalShieldOfficial/DigitalShieldPay/blob/main/Demo/README.en-US.md) | [中文](https://github.com/DigitalShieldOfficial/DigitalShieldPay/blob/main/Demo/README.zh-CN.md)
+[English](README.en-US.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
-A mock merchant system for quickly experiencing the DSPay payment flow — from the merchant frontend initiating payment → merchant backend creating order → redirect to DSPay cashier → payment callback notification.
+A mock merchant system for quickly experiencing the DSPay payment flow — merchant frontend initiates payment → merchant backend signs and builds the cashier URL → redirect to DSPay cashier → payment callback notification.
 
 ## Project Structure
 
@@ -57,9 +57,9 @@ dspay-mock-merchant/
 
 | Step | Description |
 |------|------|
-| ① | Go to [DSPay Merchant Portal](https://mcashier.ds.pro) to sign up as a merchant |
+| ① | Go to [DSPay Merchant Portal](https://mcashier.ds.pro/login/) to sign up as a merchant |
 | ② | Get your `merchantNo` from the [Account page](https://mcashier.ds.pro/account) and your `apiSecret` (Payment Key) from the [Settings page](https://mcashier.ds.pro/settings) |
-| ③ | Replace the placeholders in the backend code with your `merchantNo` and `apiSecret`, start the backend, then open the frontend page in a browser and click "Pay Now" |
+| ③ | Replace the placeholders in the backend code with your `merchantNo` and `apiSecret`, start the backend, then click "Pay Now"; the backend signs locally and returns a 302 cashier redirect without calling the create-order API |
 | ④ | HTTP 302 redirects to the DSPay cashier, where the user completes payment |
 | ⑤ | DSPay sends an async callback to `POST /notify`, the backend verifies the signature and logs the payment result |
 
@@ -67,7 +67,7 @@ dspay-mock-merchant/
 
 ### Prerequisites: Sign Up and Get Credentials
 
-1. Open the [DSPay Merchant Portal](https://mcashier.ds.pro) and sign up as a merchant
+1. Open the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) and sign up as a merchant
 2. Go to the [Account page](https://mcashier.ds.pro/account) and copy your **merchantNo**
 3. Go to the [Settings page](https://mcashier.ds.pro/settings) and get your **apiSecret** from the "Payment Key" section
 
@@ -117,7 +117,7 @@ cd back-end/php
 MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" ./start.sh
 ```
 
-You can also run `php -S localhost:3000 server.php` directly. See the [PHP Demo README](back-end/php/readme.md) for details.
+You can also run `php -S localhost:3000 server.php` directly. See the [PHP Demo README](back-end/php/README.en-US.md) for details.
 
 ### Start the Frontend
 
@@ -140,10 +140,12 @@ Create an order and redirect to the cashier.
 
 | Parameter | Required | Description |
 |------|------|------|
-| `payAmount` | No | Payment amount, default `0.01` |
+| `payAmount` | No | Payment amount, default `0.01`; use a positive plain decimal string with at most 2 decimal places |
 | `productPrice` | No | Product price, default `0.01` |
 | `productPriceCurrency` | No | Currency, default `USD` |
 | `productId` | No | Product ID, default `NOVA-LIFETIME-001` |
+
+> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Use a plain decimal string, never a number or scientific notation. More than 2 decimal places returns [`50612`](../SDK/SDK.en-US.md#error-50612). See the [order-suffix mechanism](../SDK/SDK.en-US.md#order-suffix-mechanism-in-depth).
 
 Response: HTTP 302 redirect to the DSPay cashier (with signed parameters).
 

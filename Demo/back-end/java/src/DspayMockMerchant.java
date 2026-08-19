@@ -11,6 +11,7 @@ import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +51,9 @@ public class DspayMockMerchant {
             System.getProperty("apiSecret", "change-me-to-your-apiSecret");
 
     // Default business params (overridable via query string, same as Node.js FIXED_PARAMS)
+    // Stablecoins are treated as 6-decimal tokens. Merchants may use at most
+    // 2 decimal places; DSPay reserves the remaining 4 places for its order suffix.
+    // Keep payAmount as a plain decimal string. Never use double/float or scientific notation.
     private static final String DEFAULT_PAY_AMOUNT = "0.01";
     private static final String DEFAULT_PRODUCT_PRICE = "0.01";
     private static final String DEFAULT_PRODUCT_PRICE_CURRENCY = "USD";
@@ -112,7 +116,14 @@ public class DspayMockMerchant {
             Map<String, String> q = parseQuery(exchange.getRequestURI().getQuery());
 
             // Read optional params (query overrides defaults)
-            String payAmount = q.getOrDefault("payAmount", DEFAULT_PAY_AMOUNT);
+            String payAmount;
+            try {
+                payAmount = normalizePayAmount(q.getOrDefault("payAmount", DEFAULT_PAY_AMOUNT));
+            } catch (IllegalArgumentException e) {
+                sendJson(exchange, 400,
+                        "{\"code\":\"FAIL\",\"msg\":\"payAmount must be a positive plain decimal string with at most 2 decimal places; scientific notation is not allowed\"}");
+                return;
+            }
             String productPrice = q.getOrDefault("productPrice", DEFAULT_PRODUCT_PRICE);
             String productPriceCurrency = q.getOrDefault("productPriceCurrency", DEFAULT_PRODUCT_PRICE_CURRENCY);
             String productId = q.getOrDefault("productId", DEFAULT_PRODUCT_ID);
@@ -219,10 +230,12 @@ public class DspayMockMerchant {
      */
     static String signOrder(String merchantNo, String outOrderNo,
                             String payAmount, long timestamp, String apiSecret) {
+        String normalizedOutOrderNo = requireOutOrderNo(outOrderNo);
+        String normalizedPayAmount = normalizePayAmount(payAmount);
         String canonical = String.join("&",
                 "merchantNo=" + merchantNo,
-                "outOrderNo=" + normalizeOpt(outOrderNo),
-                "payAmount=" + payAmount,
+                "outOrderNo=" + normalizedOutOrderNo,
+                "payAmount=" + normalizedPayAmount,
                 "timestamp=" + timestamp);
         return hmacSha256Hex(canonical, apiSecret);
     }
@@ -260,8 +273,33 @@ public class DspayMockMerchant {
         return sb.toString();
     }
 
-    private static String normalizeOpt(String s) {
-        return (s == null || s.trim().isEmpty()) ? "" : s.trim();
+    static String requireOutOrderNo(String value) {
+        if (value == null || value.trim().isEmpty() || value.trim().length() > 64) {
+            throw new IllegalArgumentException(
+                    "outOrderNo is required, must not be blank, and must be <= 64 characters");
+        }
+        return value.trim();
+    }
+
+    /**
+     * Preserve payAmount as a plain decimal string so signing and cashier URL use
+     * identical bytes. Stablecoins use 6 decimals: merchants use at most 2 and
+     * DSPay reserves the remaining 4 for its order suffix (error 50612 otherwise).
+     */
+    static String normalizePayAmount(String value) {
+        if (value == null) {
+            throw new IllegalArgumentException("payAmount is required");
+        }
+        String normalized = value.trim();
+        if (!normalized.matches("(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?")) {
+            throw new IllegalArgumentException(
+                    "payAmount must be a plain decimal string with at most 2 decimal places");
+        }
+        BigDecimal amount = new BigDecimal(normalized);
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("payAmount must be greater than 0");
+        }
+        return normalized;
     }
 
     // ==================== HTTP helpers ====================

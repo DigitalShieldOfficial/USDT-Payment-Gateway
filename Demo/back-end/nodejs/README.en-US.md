@@ -1,6 +1,8 @@
+[English](README.en-US.md) | [中文](README.zh-CN.md)
+
 # DSPay Mock Merchant
 
-A mock merchant backend for DSPay integration testing: visit `/create` to generate a signed order and redirect to the cashier page; `/notify` receives DSPay callbacks and verifies signatures.
+A mock merchant backend for DSPay integration testing: visit `/create` to sign locally, build a cashier URL, and redirect the user; `/notify` receives DSPay callbacks and verifies signatures.
 
 ## Prerequisites
 
@@ -58,18 +60,20 @@ tail -f logs/server.log
 
 ## API Endpoints
 
-### `GET /create` — Create order + redirect to cashier
+### `GET /create` — Build signed cashier URL + redirect
 
-Creates a signed order and returns a 302 redirect to the DSPay cashier page.
+Builds the signed cashier URL locally and returns an HTTP 302 redirect; chain/token selection and order creation happen in the Hosted Cashier.
 
 **Query parameters**
 
 | Param | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `payAmount` | No | `0.01` | Payment amount in token |
+| `payAmount` | No | `0.01` | Positive plain decimal string with at most 2 decimal places; see the [SDK precision rule](../../../SDK/SDK.en-US.md#order-suffix-mechanism-in-depth) |
 | `productPrice` | No | `0.01` | Product price |
 | `productPriceCurrency` | No | `USD` | Price currency |
 | `productId` | No | `NOVA-LIFETIME-001` | Product ID |
+
+> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Use a plain decimal string, never JavaScript `number` or scientific notation. More than 2 decimal places returns [`50612`](../../../SDK/SDK.en-US.md#error-50612).
 
 **Behavior**
 
@@ -139,8 +143,8 @@ Canonical string format:
 merchantNo={merchantNo}&outOrderNo={outOrderNo}&payAmount={payAmount}&timestamp={timestamp}
 ```
 
-- `outOrderNo` is nullable — if empty, the key is kept with an empty value (`&outOrderNo=`)
-- `payAmount` must be a plain numeric string (no scientific notation)
+- `outOrderNo` is required and must not be blank. Include it in both the signature and cashier URL. Field names are case-sensitive: use `outOrderNo`, not `outOrderNO`.
+- `payAmount` must be greater than 0, contain at most 2 decimal places, and remain a plain decimal string. Never convert it through JavaScript `number` or use scientific notation; violations return [`50612`](../../../SDK/SDK.en-US.md#error-50612).
 - HMAC-SHA256 output is lowercase hex
 
 ### Callback verification
@@ -168,5 +172,6 @@ dspay-mock-merchant/
 ├── start.sh         # Background daemon start
 ├── stop.sh          # Background daemon stop
 ├── package.json
-└── README.md
+├── README.en-US.md
+└── README.zh-CN.md
 ```

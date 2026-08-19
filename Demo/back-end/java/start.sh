@@ -19,7 +19,7 @@ fi
 echo "Starting server..."
 
 cd "$ROOT"
-nohup java src/DspayMockMerchant.java >> /dev/null 2>&1 &
+nohup java -Dfile.encoding=UTF-8 src/DspayMockMerchant.java >> /dev/null 2>&1 &
 PID=$!
 echo $PID > "$PID_FILE"
 
@@ -33,7 +33,7 @@ if kill -0 "$PID" 2>/dev/null; then
     echo "View logs: tail -f logs/server.log"
     echo "Stop server: ./stop.sh"
 else
-    echo "Server failed to start. Check: java src/DspayMockMerchant.java"
+    echo "Server failed to start. Check: java -Dfile.encoding=UTF-8 src/DspayMockMerchant.java"
     rm -f "$PID_FILE"
     exit 1
 fi

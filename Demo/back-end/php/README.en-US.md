@@ -1,3 +1,5 @@
+[English](README.en-US.md) | [中文](README.zh-CN.md)
+
 # DSPay PHP Mock Merchant
 
 A directly runnable Digital Shield pay mock merchant backend. The required SDK source is included in `src/`, so Composer is not needed.
@@ -38,11 +40,22 @@ PORT=4000 MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" ./start.sh
 
 ### `GET /create`
 
-Creates a signed order and sends an HTTP 302 redirect to the DSPay cashier. Optional parameters are `payAmount`, `productPrice`, `productPriceCurrency`, and `productId`.
+Creates a signed order and sends an HTTP 302 redirect to the DSPay cashier. The HTTP route generates a non-blank `outOrderNo` on the merchant backend before calling `Payment::createOrder()`. Query parameters `payAmount`, `productPrice`, `productPriceCurrency`, and `productId` are optional and use demo defaults when omitted.
 
 ```bash
 curl -i 'http://localhost:3000/create?payAmount=0.01&productId=DEMO-001'
 ```
+
+**Flow:**
+
+1. Generate a unique, non-blank `outOrderNo` of at most 64 characters on the merchant backend.
+2. Calculate HMAC-SHA256 in the fixed order `merchantNo → outOrderNo → payAmount → timestamp`.
+3. Include the same `outOrderNo` in both the canonical signature string and cashier URL.
+4. Return an HTTP 302 redirect to the cashier.
+
+> `outOrderNo` is required and case-sensitive: use `outOrderNo`, not `outOrderNO`. Direct calls to `Payment::createOrder()` must provide it explicitly. Missing, blank, or over-64-character values throw `RequestBuilderException`.
+
+> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Pass a positive plain decimal string; never use PHP `float` or scientific notation. More than 2 decimal places returns [`50612`](../../../SDK/SDK.en-US.md#error-50612).
 
 ### `POST /notify`
 
@@ -72,4 +85,5 @@ Run the standalone examples with:
 ```bash
 php test/CreateOrder.php
 php test/VerifyCallback.php
+php test/ValidateCreateOrder.php
 ```

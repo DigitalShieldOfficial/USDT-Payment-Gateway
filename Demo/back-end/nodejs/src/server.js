@@ -4,7 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { URL, URLSearchParams } = require('url');
-const { signOrder, verifyCallback } = require('./signer');
+const { signOrder, verifyCallback, normalizePayAmount } = require('./signer');
 
 // ==================== Configuration ====================
 
@@ -64,6 +64,8 @@ const API_SECRET = process.env.API_SECRET || 'change-me-to-your-apiSecret';
 
 // Default business params (overridable via query string, fallback to these)
 const FIXED_PARAMS = {
+    // Stablecoins use 6 decimals. Merchants may submit at most 2 decimal places;
+    // DSPay reserves the remaining 4 for order suffixes (error 50612 otherwise).
     payAmount: '0.01',
     productPrice: '0.01',
     productPriceCurrency: 'USD',
@@ -109,7 +111,13 @@ function handleCreate(url, res) {
     const apiSecret = API_SECRET;
 
     // Read optional params (query overrides FIXED_PARAMS defaults)
-    const payAmount = p.get('payAmount') || FIXED_PARAMS.payAmount;
+    let payAmount;
+    try {
+        payAmount = normalizePayAmount(p.get('payAmount') || FIXED_PARAMS.payAmount);
+    } catch (validationError) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({ code: 'FAIL', msg: validationError.message }));
+    }
     const productPrice = p.get('productPrice') || FIXED_PARAMS.productPrice;
     const productPriceCurrency = p.get('productPriceCurrency') || FIXED_PARAMS.productPriceCurrency;
     const productId = p.get('productId') || FIXED_PARAMS.productId;

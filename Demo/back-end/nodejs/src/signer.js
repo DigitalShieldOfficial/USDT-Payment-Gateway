@@ -21,24 +21,53 @@ const crypto = require('crypto');
  *
  * @param {object} p
  * @param {string} p.merchantNo  Merchant ID
- * @param {string} p.outOrderNo  Merchant's external order number (nullable/blank → empty string)
- * @param {string|number} p.payAmount  Payment amount in token (must be plain numeric string to avoid scientific notation)
+ * @param {string} p.outOrderNo  Required merchant external order number (non-blank, max 64 characters)
+ * @param {string} p.payAmount  Positive plain decimal string with at most 2 decimal
+ *   places. Stablecoins use 6 decimals; DSPay reserves the remaining 4 for its suffix.
  * @param {number} p.timestamp   Unix timestamp in milliseconds
  * @param {string} apiSecret     Merchant apiSecret
  * @returns {string} Signature hex string
  */
 function signOrder({ merchantNo, outOrderNo, payAmount, timestamp }, apiSecret) {
-    const opt = (v) => (v == null || String(v).trim() === '') ? '' : String(v).trim();
+    const normalizedOutOrderNo = normalizeOutOrderNo(outOrderNo);
+    const normalizedPayAmount = normalizePayAmount(payAmount);
     const canonical = [
         `merchantNo=${merchantNo}`,
-        `outOrderNo=${opt(outOrderNo)}`,
-        `payAmount=${payAmount}`,
+        `outOrderNo=${normalizedOutOrderNo}`,
+        `payAmount=${normalizedPayAmount}`,
         `timestamp=${timestamp}`,
     ].join('&');
 
     return crypto.createHmac('sha256', apiSecret)
         .update(canonical, 'utf8')
         .digest('hex');
+}
+
+function normalizeOutOrderNo(value) {
+    const normalized = value == null ? '' : String(value).trim();
+    if (!normalized || normalized.length > 64) {
+        throw new TypeError('outOrderNo is required, must not be blank, and must be <= 64 characters');
+    }
+    return normalized;
+}
+
+/**
+ * Keep payAmount as a string. Converting through Number can lose precision or
+ * emit scientific notation. Merchants use at most 2 decimal places; DSPay reserves
+ * the remaining 4 stablecoin decimal places for its order suffix.
+ */
+function normalizePayAmount(value) {
+    if (typeof value !== 'string') {
+        throw new TypeError('payAmount must be a plain decimal string');
+    }
+    const normalized = value.trim();
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalized)) {
+        throw new TypeError('payAmount must be a plain decimal string with at most 2 decimal places; scientific notation is not allowed');
+    }
+    if (!/[1-9]/.test(normalized)) {
+        throw new RangeError('payAmount must be greater than 0');
+    }
+    return normalized;
 }
 
 /**
@@ -67,4 +96,4 @@ function verifyCallback(rawBody, signature, apiSecret) {
     return crypto.timingSafeEqual(expectedBuf, sigBuf);
 }
 
-module.exports = { signOrder, verifyCallback };
+module.exports = { signOrder, verifyCallback, normalizeOutOrderNo, normalizePayAmount };

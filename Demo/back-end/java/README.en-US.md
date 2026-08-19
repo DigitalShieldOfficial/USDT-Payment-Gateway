@@ -1,8 +1,8 @@
+[English](README.en-US.md) | [中文](README.zh-CN.md)
+
 # DSPay mock merchant (Java)
 
-Mock merchant backend for DSPay integration: `/create` generates a signed order and redirects to the cashier; `/notify` receives DSPay callbacks and verifies signatures.
-
-Functionally identical to the [Node.js version](../js).
+Mock merchant backend for DSPay integration: `/create` signs locally, builds a cashier URL, and redirects the user; `/notify` receives DSPay callbacks and verifies signatures.
 
 ## Requirements
 
@@ -23,13 +23,13 @@ cd back-end/java
 
 ```bash
 cd back-end/java
-java src/DspayMockMerchant.java
+java -Dfile.encoding=UTF-8 src/DspayMockMerchant.java
 ```
 
 Custom port:
 
 ```bash
-java -Dport=4000 src/DspayMockMerchant.java
+java -Dfile.encoding=UTF-8 -Dport=4000 src/DspayMockMerchant.java
 ```
 
 ## Configuration
@@ -46,13 +46,15 @@ All configurable via `-D` system properties:
 Example:
 
 ```bash
-java -Dport=4000 -DmerchantNo=M2079022817467412481 -DapiSecret=my-secret \
+java -Dfile.encoding=UTF-8 -Dport=4000 -DmerchantNo=M2079022817467412481 -DapiSecret=my-secret \
      src/DspayMockMerchant.java
 ```
 
 ## Endpoints
 
-### `GET /create` — Create order + redirect to cashier
+### `GET /create` — Build signed cashier URL + redirect
+
+This endpoint signs locally and redirects the user to the Hosted Cashier, where chain/token selection and order creation happen.
 
 Credentials (`merchantNo` + `apiSecret`) are **hardcoded on the server side** — they are NOT accepted via query params (prevents identity spoofing). Only business fields are overridable.
 
@@ -60,10 +62,12 @@ Credentials (`merchantNo` + `apiSecret`) are **hardcoded on the server side** �
 
 | Param | Default | Description |
 |---|---|---|
-| `payAmount` | `0.01` | Payment amount |
+| `payAmount` | `0.01` | Positive plain decimal string with at most 2 decimal places; see the [SDK precision rule](../../../SDK/SDK.en-US.md#order-suffix-mechanism-in-depth) |
 | `productPrice` | `0.01` | Product price |
 | `productPriceCurrency` | `USD` | Price currency |
 | `productId` | `NOVA-LIFETIME-001` | Product ID |
+
+> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Use a plain decimal string, never `double` / `float` or scientific notation. More than 2 decimal places returns [`50612`](../../../SDK/SDK.en-US.md#error-50612).
 
 **Behavior:**
 
@@ -110,9 +114,9 @@ canonical = merchantNo={m}&outOrderNo={o}&payAmount={p}&timestamp={t}
 signature = HMAC-SHA256(canonical, apiSecret) → lowercase hex
 ```
 
-- Field order is **sensitive** — wrong order causes error code 50613
-- `outOrderNo` can be empty (key kept, value empty: `&outOrderNo=`)
-- `payAmount` must be a plain numeric string (no scientific notation)
+- Field order is **sensitive** — wrong order causes error code [`50613`](../../../SDK/SDK.en-US.md#error-50613)
+- `outOrderNo` is required and must not be blank. Include it in both the signature and cashier URL. Field names are case-sensitive: use `outOrderNo`, not `outOrderNO`.
+- `payAmount` must be greater than 0, contain at most 2 decimal places, and remain a plain decimal string. Never convert it through `double` / `float` or use scientific notation; violations return [`50612`](../../../SDK/SDK.en-US.md#error-50612).
 
 **Callback verification (DSPay → merchant):**
 

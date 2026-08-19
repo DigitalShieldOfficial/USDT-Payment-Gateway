@@ -50,10 +50,12 @@ final class RequestBuilder
     public function signOrder($outOrderNo, $payAmount, $timestamp)
     {
         $this->assertConfigured();
+        $outOrderNo = $this->normalizeRequiredOrderNo($outOrderNo);
+        $payAmount = $this->normalizeRequiredPayAmount($payAmount);
 
         $canonical = implode('&', array(
             'merchantNo=' . $this->merchantNo,
-            'outOrderNo=' . $this->normalizeOptionalParam($outOrderNo),
+            'outOrderNo=' . $outOrderNo,
             'payAmount=' . $payAmount,
             'timestamp=' . $timestamp,
         ));
@@ -117,18 +119,56 @@ final class RequestBuilder
     }
 
     /**
-     * @param string $s
-     * @return string
-     */
-    /**
-     * Normalize optional parameter (empty string for null/whitespace).
+     * Validate and normalize required merchant external order ID.
      *
-     * @param string $s
+     * @param mixed $value
      * @return string
+     * @throws RequestBuilderException
      */
-    private function normalizeOptionalParam($s)
+    private function normalizeRequiredOrderNo($value)
     {
-        return ($s === null || trim($s) === '') ? '' : trim($s);
+        if (!is_scalar($value)) {
+            throw new RequestBuilderException(
+                'outOrderNo is required, must not be blank, and must be <= 64 characters'
+            );
+        }
+
+        $normalized = trim((string)$value);
+        if ($normalized === '' || strlen($normalized) > 64) {
+            throw new RequestBuilderException(
+                'outOrderNo is required, must not be blank, and must be <= 64 characters'
+            );
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * Preserve required payAmount as a plain decimal string. Never convert it
+     * through float. Merchants use at most 2 decimal places; DSPay reserves the
+     * remaining 4 stablecoin decimal places for its order suffix.
+     *
+     * @param mixed $value
+     * @return string
+     * @throws RequestBuilderException
+     */
+    private function normalizeRequiredPayAmount($value)
+    {
+        if (!is_string($value)) {
+            throw new RequestBuilderException('payAmount must be a plain decimal string');
+        }
+
+        $normalized = trim($value);
+        if (!preg_match('/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/', $normalized)) {
+            throw new RequestBuilderException(
+                'payAmount must be a plain decimal string with at most 2 decimal places; scientific notation is not allowed'
+            );
+        }
+        if (!preg_match('/[1-9]/', $normalized)) {
+            throw new RequestBuilderException('payAmount must be greater than 0');
+        }
+
+        return $normalized;
     }
 
     /**
