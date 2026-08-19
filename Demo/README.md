@@ -1,5 +1,5 @@
 ## language
-[English](README.en-US.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
@@ -117,7 +117,7 @@ cd back-end/php
 MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" ./start.sh
 ```
 
-You can also run `php -S localhost:3000 server.php` directly. See the [PHP Demo README](back-end/php/README.en-US.md) for details.
+You can also run `php -S localhost:3000 server.php` directly. See the [PHP Demo README](back-end/php/README.md) for details.
 
 ### Start the Frontend
 

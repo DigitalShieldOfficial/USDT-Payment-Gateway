@@ -480,7 +480,7 @@ Merchants do not pass `networkId` or `contractAddress`. The payer selects the ch
 - The cashier creates the order and displays the receiving address, QR code, expiry time, and **actual payable amount including the suffix**.
 - The merchant receives state changes through Chapter 5 webhooks. If a webhook was not received successfully, query the order using [§5.11](#merchant-active-order-query-webhook-fallback).
 
-Merchants do not parse the cashier's internal order-creation response and must not construct signatures in the frontend. Complete implementations are available in [Java §4.8](#java-end-to-end-demo), [Node.js §4.9](#node.js-end-to-end-demo), and the [PHP demo](../Demo/back-end/php/README.en-US.md).
+Merchants do not parse the cashier's internal order-creation response and must not construct signatures in the frontend. Complete implementations are available in [Java §4.8](#java-end-to-end-demo), [Node.js §4.9](#node.js-end-to-end-demo), and the [PHP demo](../Demo/back-end/php/README.md).
 
 <a id="signature-canonical-string"></a>
 ### 4.4 Signature Canonical String
@@ -534,14 +534,14 @@ The signing field `payAmount` must be sent as a **plain numeric string** (no sci
 |------|------|
 | Java | Construct `BigDecimal` from a string and output with `toPlainString()`. |
 | Node.js | Preserve the original string and validate at most 2 decimal places; do not convert through `number` / `toFixed()`. |
-| PHP | Keep `payAmount` as a string, call `trim()`, and use it directly; never convert it to `float`. Use `preg_match()` to validate positive plain-decimal format and at most 2 decimal places; see the [PHP demo](../Demo/back-end/php/README.en-US.md). |
+| PHP | Keep `payAmount` as a string, call `trim()`, and use it directly; never convert it to `float`. Use `preg_match()` to validate positive plain-decimal format and at most 2 decimal places; see the [PHP demo](../Demo/back-end/php/README.md). |
 
 > Otherwise `1e2` and `100` produce different signed bytes and signature verification fails ([`50613`](#error-50613)).
 
 <a id="java-end-to-end-demo"></a>
 ### 4.8 Java End-to-End Demo
 
-The runnable Java demo is maintained as a single source of truth under [`Demo/back-end/java`](../Demo/back-end/java/README.en-US.md). The SDK intentionally does not duplicate its source code.
+The runnable Java demo is maintained as a single source of truth under [`Demo/back-end/java`](../Demo/back-end/java/README.md). The SDK intentionally does not duplicate its source code.
 
 **Hosted Cashier flow**:
 
@@ -554,14 +554,14 @@ The runnable Java demo is maintained as a single source of truth under [`Demo/ba
 
 Canonical files:
 
-- [Java demo README](../Demo/back-end/java/README.en-US.md)
+- [Java demo README](../Demo/back-end/java/README.md)
 - [Runnable source: `DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
 - [Start script](../Demo/back-end/java/start.sh) / [stop script](../Demo/back-end/java/stop.sh)
 
 <a id="node.js-end-to-end-demo"></a>
 ### 4.9 Node.js End-to-End Demo
 
-The runnable Node.js demo is maintained as a single source of truth under [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.en-US.md). The SDK intentionally does not duplicate its source code.
+The runnable Node.js demo is maintained as a single source of truth under [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). The SDK intentionally does not duplicate its source code.
 
 **Hosted Cashier flow**:
 
@@ -574,7 +574,7 @@ The runnable Node.js demo is maintained as a single source of truth under [`Demo
 
 Canonical files:
 
-- [Node.js demo README](../Demo/back-end/nodejs/README.en-US.md)
+- [Node.js demo README](../Demo/back-end/nodejs/README.md)
 - [HTTP server and cashier URL builder: `server.js`](../Demo/back-end/nodejs/src/server.js)
 - [Signing and callback verification: `signer.js`](../Demo/back-end/nodejs/src/signer.js)
 - [Package scripts](../Demo/back-end/nodejs/package.json)
@@ -1453,11 +1453,11 @@ A: The key has been frozen. If you froze it yourself, restore it from the portal
 <a id="appendix-a-java-reference-integration"></a>
 ## Appendix A: Java Reference Integration
 
-Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.en-US.md). It covers both directions: building a signed cashier redirect and verifying webhook signatures.
+Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers both directions: building a signed cashier redirect and verifying webhook signatures.
 
 | File | Purpose |
 |------|---------|
-| [`README.en-US.md`](../Demo/back-end/java/README.en-US.md) | Requirements, configuration, run commands, endpoints, and signature rules |
+| [`README.md`](../Demo/back-end/java/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
 | [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Local signing, URL encoding, cashier redirect, raw-body webhook verification, and strict ACK response |
 | [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | Background process lifecycle |
 
@@ -1472,11 +1472,11 @@ The create flow is: **merchant backend signs locally → builds cashier URL → 
 <a id="appendix-b-nodejs-reference-integration"></a>
 ## Appendix B: Node.js Reference Integration
 
-Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.en-US.md). It uses only built-in Node.js modules and covers cashier redirects plus webhook verification.
+Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). It uses only built-in Node.js modules and covers cashier redirects plus webhook verification.
 
 | File | Purpose |
 |------|---------|
-| [`README.en-US.md`](../Demo/back-end/nodejs/README.en-US.md) | Requirements, configuration, run commands, endpoints, and signature rules |
+| [`README.md`](../Demo/back-end/nodejs/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
 | [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, signed cashier URL construction, 302 redirect, and raw-body callback handling |
 | [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | Order signing and constant-time callback signature verification |
 | [`package.json`](../Demo/back-end/nodejs/package.json) | Start command and runtime metadata |

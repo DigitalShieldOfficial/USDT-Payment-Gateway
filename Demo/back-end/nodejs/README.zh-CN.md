@@ -1,4 +1,4 @@
-[English](README.en-US.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay 模拟商户后端（Node.js）
 
@@ -172,6 +172,6 @@ dspay-mock-merchant/
 ├── start.sh         # 后台启动
 ├── stop.sh          # 后台停止
 ├── package.json
-├── README.en-US.md
+├── README.md
 └── README.zh-CN.md
 ```

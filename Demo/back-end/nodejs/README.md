@@ -1,4 +1,4 @@
-[English](README.en-US.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
@@ -172,6 +172,6 @@ dspay-mock-merchant/
 ├── start.sh         # Background daemon start
 ├── stop.sh          # Background daemon stop
 ├── package.json
-├── README.en-US.md
+├── README.md
 └── README.zh-CN.md
 ```
