@@ -35,7 +35,12 @@ if ($method === 'GET' && $path === '/') {
 
 if ($method === 'GET' && $path === '/create') {
     try {
+        $timestamp = intval(microtime(true) * 1000);
         $url = $payment->createOrder(array(
+            'outOrderNo' => 'PHP-' . $timestamp,
+            'timestamp' => $timestamp,
+            // Stablecoins use 6 decimals. Merchants submit at most 2 decimal
+            // places; DSPay reserves the remaining 4 for its suffix.
             'payAmount' => isset($_GET['payAmount']) ? $_GET['payAmount'] : '0.01',
             'productPrice' => isset($_GET['productPrice']) ? $_GET['productPrice'] : '0.01',
             'productPriceCurrency' => isset($_GET['productPriceCurrency']) ? $_GET['productPriceCurrency'] : 'USD',

@@ -10,6 +10,7 @@ $payment = Client::payment(MERCHANT_NO, API_SECRET);
 
 try {
     $url = $payment->createOrder(array(
+        'outOrderNo'         => 'PHP-DEMO-001',
         'payAmount'            => '0.01',
         'productPrice'         => '0.01',
         'productPriceCurrency' => 'USD',

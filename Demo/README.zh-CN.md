@@ -1,9 +1,9 @@
 ## 语言
-[English](https://github.com/DigitalShieldOfficial/DigitalShieldPay/blob/main/Demo/README.en-US.md) | [中文](https://github.com/DigitalShieldOfficial/DigitalShieldPay/blob/main/Demo/README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
-模拟商户系统（Mock Merchant），用于快速体验 DSPay 支付流程 —— 从商户前端发起支付 → 商户后端创建订单 → 跳转 DSPay 收银台 → 支付回调通知。
+模拟商户系统（Mock Merchant），用于快速体验 DSPay 支付流程 —— 商户前端发起支付 → 商户后端本地签名并拼接收银台链接 → 跳转 DSPay 收银台 → 支付回调通知。
 
 ## 项目结构
 
@@ -28,7 +28,7 @@ dspay-mock-merchant/
 ```
                                 DSPay
 ┌─────────────────────┐     ┌──────────────┐
-│ DSPay 商户管理台     │     │  DSPay 收银台  │
+│ DSPay 后台           │     │  DSPay 收银台  │
 │                     │     │              │
 │ ① 注册商户          │     │ ④ 用户完成    │
 │ ② 获取 merchantNo   │     │   支付        │
@@ -57,9 +57,9 @@ dspay-mock-merchant/
 
 | 步骤 | 描述 |
 |------|------|
-| ① | 前往 [DSPay 商户管理台](https://mcashier.ds.pro) 注册成为商户 |
+| ① | 前往 [DSPay 后台](https://mcashier.ds.pro/login/)注册成为商户 |
 | ② | 在商户管理台 [账户页面](https://mcashier.ds.pro/account) 获取 `merchantNo`，在 [设置页面](https://mcashier.ds.pro/settings) 获取「支付 Key」即 `apiSecret` |
-| ③ | 将 `merchantNo` 和 `apiSecret` 替换后端代码中的占位符，启动后端，在浏览器打开前端页面，点击「Pay Now」 |
+| ③ | 将 `merchantNo` 和 `apiSecret` 替换后端代码中的占位符并启动后端；点击「Pay Now」后，后端本地签名并返回 302 收银台跳转，不调用创建订单 API |
 | ④ | HTTP 302 跳转到 DSPay 收银台，用户完成支付 |
 | ⑤ | DSPay 异步回调 `POST /notify`，后端验签后记录支付结果 |
 
@@ -67,7 +67,7 @@ dspay-mock-merchant/
 
 ### 前置条件：注册商户并获取凭证
 
-1. 打开 [DSPay 商户管理台](https://mcashier.ds.pro) 注册成为商户
+1. 打开 [DSPay 后台](https://mcashier.ds.pro/login/)注册成为商户
 2. 注册后进入 [账户页面](https://mcashier.ds.pro/account) 复制你的 **商户编号（merchantNo）**
 3. 进入 [设置页面](https://mcashier.ds.pro/settings)，在「支付 Key」栏目中获取 **API 密钥（apiSecret）**
 
@@ -117,7 +117,7 @@ cd back-end/php
 MERCHANT_NO="你的merchantNo" API_SECRET="你的apiSecret" ./start.sh
 ```
 
-也可以直接运行：`php -S localhost:3000 server.php`。详细说明见 [PHP Demo README](back-end/php/readme-zh.md)。
+也可以直接运行：`php -S localhost:3000 server.php`。详细说明见 [PHP Demo README](back-end/php/README.zh-CN.md)。
 
 ### 启动前端
 
@@ -140,10 +140,12 @@ MERCHANT_NO="你的merchantNo" API_SECRET="你的apiSecret" ./start.sh
 
 | 参数 | 必填 | 说明 |
 |------|------|------|
-| `payAmount` | 否 | 支付金额，默认 `0.01` |
+| `payAmount` | 否 | 支付金额，默认 `0.01`；必须为大于 0、最多 2 位小数的普通十进制字符串 |
 | `productPrice` | 否 | 商品价格，默认 `0.01` |
 | `productPriceCurrency` | 否 | 币种，默认 `USD` |
 | `productId` | 否 | 商品 ID，默认 `NOVA-LIFETIME-001` |
+
+> **`payAmount` 精度限制：** 稳定币统一按 6 位精度处理。商户最多提交 2 位小数，后 4 位由 DSPay 生成订单尾数。`100`、`100.1`、`100.12` 合法，`100.123` 不合法。必须使用普通十进制字符串，不能传数字或科学计数法。超过 2 位小数时返回 [`50612`](../SDK/SDK.zh-CN.md#error-50612)。详见 [订单尾数机制](../SDK/SDK.zh-CN.md#订单尾数机制详解)。
 
 响应：HTTP 302 重定向到 DSPay 收银台（附带签名参数）。
 

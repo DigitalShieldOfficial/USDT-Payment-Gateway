@@ -1,3 +1,5 @@
+[English](README.md) | [中文](README.zh-CN.md)
+
 # DSPay PHP Mock Merchant
 
 可直接运行的 Digital Shield pay模拟商户后端。SDK 源码已包含在 `src/` 中，不需要安装或使用 Composer。
@@ -38,11 +40,22 @@ PORT=4000 MERCHANT_NO="你的merchantNo" API_SECRET="你的apiSecret" ./start.sh
 
 ### `GET /create`
 
-创建签名订单并通过 HTTP 302 跳转到 DSPay 收银台。支持可选参数：`payAmount`、`productPrice`、`productPriceCurrency`、`productId`。
+创建签名订单并通过 HTTP 302 跳转到 DSPay 收银台。HTTP 路由会在商户后端生成非空 `outOrderNo`，再传给 `Payment::createOrder()`。查询参数 `payAmount`、`productPrice`、`productPriceCurrency`、`productId` 可选，未传时使用 Demo 默认值。
 
 ```bash
 curl -i 'http://localhost:3000/create?payAmount=0.01&productId=DEMO-001'
 ```
+
+**处理流程：**
+
+1. 商户后端生成唯一、非空且不超过 64 字符的 `outOrderNo`
+2. 按 `merchantNo → outOrderNo → payAmount → timestamp` 固定顺序计算 HMAC-SHA256
+3. 将 `outOrderNo` 同时写入签名规范化字符串和收银台 URL
+4. 返回 HTTP 302 跳转收银台
+
+> `outOrderNo` 是必填字段，字段名区分大小写，必须写作 `outOrderNo`，不是 `outOrderNO`。直接调用 `Payment::createOrder()` 时必须显式传入；缺失、纯空白或超过 64 字符会抛出 `RequestBuilderException`。
+
+> **`payAmount` 精度限制：** 稳定币统一按 6 位精度处理。商户最多提交 2 位小数，后 4 位由 DSPay 生成订单尾数。`100` / `100.1` / `100.12` 合法，`100.123` 不合法。必须以大于 0 的普通十进制字符串传入，禁止使用 PHP `float` 或科学计数法。超过 2 位小数时返回 [`50612`](../../../SDK/SDK.zh-CN.md#error-50612)。
 
 ### `POST /notify`
 
@@ -72,4 +85,5 @@ php/
 ```bash
 php test/CreateOrder.php
 php test/VerifyCallback.php
+php test/ValidateCreateOrder.php
 ```

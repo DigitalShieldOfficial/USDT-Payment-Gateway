@@ -22,8 +22,10 @@ final class Payment
      * Create order: sign params and build the cashier redirect URL.
      *
      * @param array $data
-     * - @var string payAmount: Amount to pay (required)
-     * - @var string outOrderNo: Order ID in your system (auto-generated if empty)
+     * - @var string payAmount: Positive plain decimal amount with at most 2 decimal
+     *   places (required; never float/scientific notation). Stablecoins use 6
+     *   decimals; DSPay reserves the remaining 4 for its order suffix.
+     * - @var string outOrderNo: Order ID in your system (required, non-blank, max 64 characters)
      * - @var int|string timestamp: Milliseconds (auto-generated if empty)
      * - @var string productPrice: Product price
      * - @var string productPriceCurrency: Product price currency (e.g. USD)
@@ -33,16 +35,19 @@ final class Payment
      */
     public function createOrder(array $data)
     {
-        if (!isset($data['payAmount']) || $data['payAmount'] === ''
-            || !is_numeric($data['payAmount'])
-            || $data['payAmount'] < 0.0000000001) {
-            throw new RequestBuilderException('payAmount must be numeric and >= 0.0000000001');
+        $payAmount = $this->normalizePayAmount(
+            isset($data['payAmount']) ? $data['payAmount'] : null
+        );
+
+        if (!isset($data['outOrderNo']) || !is_scalar($data['outOrderNo'])
+            || trim((string)$data['outOrderNo']) === ''
+            || strlen(trim((string)$data['outOrderNo'])) > 64) {
+            throw new RequestBuilderException(
+                'outOrderNo is required, must not be blank, and must be <= 64 characters'
+            );
         }
 
-        $payAmount = (float)$data['payAmount'];
-        $outOrderNo = (isset($data['outOrderNo']) && $data['outOrderNo'] !== '')
-            ? $data['outOrderNo']
-            : $this->millis();
+        $outOrderNo = trim((string)$data['outOrderNo']);
         $timestamp = (isset($data['timestamp']) && $data['timestamp'] !== '')
             ? $data['timestamp']
             : $this->millis();
@@ -84,5 +89,32 @@ final class Payment
     private function millis()
     {
         return intval(microtime(true) * 1000);
+    }
+
+    /**
+     * Keep payAmount as a string to preserve precision and signed bytes.
+     * Merchants use at most 2 decimal places; DSPay reserves the remaining 4.
+     *
+     * @param mixed $value
+     * @return string
+     * @throws RequestBuilderException
+     */
+    private function normalizePayAmount($value)
+    {
+        if (!is_string($value)) {
+            throw new RequestBuilderException('payAmount must be a plain decimal string');
+        }
+
+        $normalized = trim($value);
+        if (!preg_match('/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/', $normalized)) {
+            throw new RequestBuilderException(
+                'payAmount must be a plain decimal string with at most 2 decimal places; scientific notation is not allowed'
+            );
+        }
+        if (!preg_match('/[1-9]/', $normalized)) {
+            throw new RequestBuilderException('payAmount must be greater than 0');
+        }
+
+        return $normalized;
     }
 }
