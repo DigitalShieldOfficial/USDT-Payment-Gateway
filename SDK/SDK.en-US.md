@@ -186,7 +186,7 @@ The following versions were used to execute the corresponding tests. When copyin
 |------|---------|-----------------|-----------------------|
 | Inline Node.js samples and Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; built-in Node.js modules only |
 | Java Demo and Java verification samples | JDK 11 | Microsoft OpenJDK `11.0.27` and Eclipse Temurin `21.0.11` | No Maven/Gradle dependencies; JDK standard library only |
-| PHP Demo | PHP 5.6 | PHP `5.6.40` CLI | No Composer dependencies; PHP standard extensions only |
+| PHP Demo | PHP 5.6 | PHP `5.6.40` and `8.5.10` CLI | No Composer dependencies; PHP standard extensions only |
 | Frontend Demo | A modern browser supporting `URL`, `sessionStorage`, and `crypto.randomUUID()` | Google Chrome `151.0.7922.175` | One HTML file; no framework or build tool |
 
 > Only one Node.js installation is needed. The unified debugging baseline is Node.js `18.20.8` + npm `10.8.2`; the Node.js Demo includes `.nvmrc`, so run `nvm use` in that directory. Validation environments include macOS `15.1` and Docker Linux. The Java Demo uses JDK 11 single-file source launch; the PHP minimum is PHP 5.6 because callback verification uses `hash_equals()`.

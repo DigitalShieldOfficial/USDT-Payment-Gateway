@@ -206,7 +206,7 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 |------|----------|------------|----------|
 | 文档内 Node.js 示例、Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 无 npm 依赖，仅使用 Node.js 内置模块 |
 | Java Demo、Java 验签示例 | JDK 11 | Microsoft OpenJDK `11.0.27`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
-| PHP Demo | PHP 5.6 | PHP `5.6.40` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
+| PHP Demo | PHP 5.6 | PHP `5.6.40`、`8.5.10` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
 | 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
 
 > Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 可直接使用 JDK 11 的单文件源码启动模式；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。

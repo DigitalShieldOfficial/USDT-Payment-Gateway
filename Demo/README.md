@@ -10,7 +10,7 @@ This demo implements the merchant integration flow: the browser calls the mercha
 |------|---------|-----------------|--------------|
 | Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; `.nvmrc` included |
 | Java | JDK 11 | Microsoft OpenJDK `11.0.27`; Temurin `21.0.11` | No Maven/Gradle dependencies |
-| PHP | PHP 5.6 | PHP CLI `5.6.40` | No Composer dependency |
+| PHP | PHP 5.6 | PHP CLI `5.6.40` and `8.5.10` | No Composer dependency |
 | Frontend | A modern browser with `crypto.randomUUID()` | Chrome `151.0.7922.175` | One HTML file; no build step |
 
 Tests were run on macOS `15.1` and Docker Linux. “Minimum” is the source compatibility baseline; “Tested versions” lists runtimes actually used to execute repository tests.
@@ -62,11 +62,15 @@ java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL
 
 ## Run PHP
 
+> Replace only the two `REPLACE_WITH_REAL_*` credential placeholders below. The production API and local redirect base are already populated. Do not copy Markdown link syntax into shell values.
+
 ```bash
 cd Demo/back-end/php
-MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO" API_SECRET="REPLACE_WITH_REAL_API_SECRET" \
-DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
-PUBLIC_BASE_URL="http://localhost:3000" ./start.sh
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://wallet.ds.pro"
+export PUBLIC_BASE_URL="http://localhost:3000"
+./start.sh
 ```
 
 ## Demo endpoints

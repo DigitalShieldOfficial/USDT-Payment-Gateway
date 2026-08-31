@@ -21,7 +21,7 @@ Demo/
 |------|----------|------------|----------|
 | Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 零 npm 依赖；提供 `.nvmrc` |
 | Java | JDK 11 | Microsoft OpenJDK `11.0.27`；Temurin `21.0.11` | 零 Maven/Gradle 依赖 |
-| PHP | PHP 5.6 | PHP CLI `5.6.40` | 无需 Composer |
+| PHP | PHP 5.6 | PHP CLI `5.6.40`、`8.5.10` | 无需 Composer |
 | 前端 | 支持 `crypto.randomUUID()` 的现代浏览器 | Chrome `151.0.7922.175` | 单文件 HTML，无构建步骤 |
 
 验证操作系统：macOS `15.1`、Docker Linux。最低版本和已验证版本含义不同：最低版本是源码兼容基线，已验证版本是仓库测试实际运行过的版本。
@@ -88,11 +88,15 @@ java \
 
 ## PHP 启动
 
+> 只需把下面两个 `REPLACE_WITH_REAL_*` 占位值替换为商户后台中的真实参数。正式API地址和本地回跳地址已经填写，不要复制Markdown链接语法到Shell命令中。
+
 ```bash
 cd Demo/back-end/php
-MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO" API_SECRET="REPLACE_WITH_REAL_API_SECRET" \
-DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
-PUBLIC_BASE_URL="http://localhost:3000" ./start.sh
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://wallet.ds.pro"
+export PUBLIC_BASE_URL="http://localhost:3000"
+./start.sh
 ```
 
 ## 本地接口

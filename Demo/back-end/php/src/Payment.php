@@ -47,8 +47,17 @@ final class Payment
             'timeout' => 10,
         )));
         $raw = file_get_contents($this->baseUrl . $path, false, $context);
+        // PHP 8.4+ provides a dedicated API. Older versions use a dynamic variable
+        // name to avoid PHP 8.5's direct-$http_response_header deprecation while
+        // retaining PHP 5.6 compatibility.
+        if (function_exists('http_get_last_response_headers')) {
+            $responseHeaders = http_get_last_response_headers();
+        } else {
+            $legacyHeaderVariable = 'http_response_header';
+            $responseHeaders = isset($$legacyHeaderVariable) ? $$legacyHeaderVariable : array();
+        }
         $status = 0;
-        if (isset($http_response_header[0]) && preg_match('/\s([0-9]{3})\s/', $http_response_header[0], $m)) {
+        if (isset($responseHeaders[0]) && preg_match('/\s([0-9]{3})\s/', $responseHeaders[0], $m)) {
             $status = intval($m[1]);
         }
         $decoded = json_decode($raw === false ? '' : $raw, true);
