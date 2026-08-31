@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "test": "node --test"
   },
+  "packageManager": "npm@10.8.2",
   "engines": {
-    "node": ">=18"
+    "node": ">=18.20.8"
   }
 }

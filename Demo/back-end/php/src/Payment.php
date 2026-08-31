@@ -4,117 +4,71 @@ namespace DSPay\Api;
 
 final class Payment
 {
-    /**
-     * @var RequestBuilder
-     */
     private $requestBuilder;
+    private $baseUrl;
 
-    /**
-     * @param string $merchantNo
-     * @param string $apiSecret
-     */
-    public function __construct($merchantNo, $apiSecret)
+    public function __construct($merchantNo, $apiSecret, $baseUrl = null)
     {
         $this->requestBuilder = new RequestBuilder($merchantNo, $apiSecret);
+        $configured = $baseUrl !== null ? $baseUrl : getenv('DSPAY_BASE_URL');
+        $this->baseUrl = rtrim((string)$configured, '/');
     }
 
-    /**
-     * Create order: sign params and build the cashier redirect URL.
-     *
-     * @param array $data
-     * - @var string payAmount: Positive plain decimal amount with at most 2 decimal
-     *   places (required; never float/scientific notation). Stablecoins use 6
-     *   decimals; DSPay reserves the remaining 4 for its order suffix.
-     * - @var string outOrderNo: Order ID in your system (required, non-blank, max 64 characters)
-     * - @var int|string timestamp: Milliseconds (auto-generated if empty)
-     * - @var string productPrice: Product price
-     * - @var string productPriceCurrency: Product price currency (e.g. USD)
-     * - @var string productId: Product ID
-     * @return string Cashier redirect URL
-     * @throws RequestBuilderException
-     */
     public function createOrder(array $data)
     {
-        $payAmount = $this->normalizePayAmount(
-            isset($data['payAmount']) ? $data['payAmount'] : null
-        );
-
-        if (!isset($data['outOrderNo']) || !is_scalar($data['outOrderNo'])
-            || trim((string)$data['outOrderNo']) === ''
-            || strlen(trim((string)$data['outOrderNo'])) > 64) {
-            throw new RequestBuilderException(
-                'outOrderNo is required, must not be blank, and must be <= 64 characters'
-            );
-        }
-
-        $outOrderNo = trim((string)$data['outOrderNo']);
-        $timestamp = (isset($data['timestamp']) && $data['timestamp'] !== '')
-            ? $data['timestamp']
-            : $this->millis();
-
-        $signature = $this->requestBuilder->signOrder($outOrderNo, $payAmount, $timestamp);
-
-        $params = array(
-            'merchantNo' => $this->requestBuilder->getMerchantNo(),
-            'outOrderNo' => $outOrderNo,
-            'payAmount' => $payAmount,
-            'timestamp' => $timestamp,
-            'signature' => $signature,
-        );
-
-        foreach (array('productPrice', 'productPriceCurrency', 'productId') as $opt) {
-            if (isset($data[$opt]) && $data[$opt] !== '') {
-                $params[$opt] = $data[$opt];
-            }
-        }
-
-        return $this->requestBuilder->buildCashierUrl($params);
+        $data['merchantNo'] = $this->requestBuilder->getMerchantNo();
+        if (!isset($data['timestamp'])) $data['timestamp'] = $this->millis();
+        $data['signature'] = $this->requestBuilder->signCreate($data);
+        return $this->postJson('/dspay/public/order/create', $data);
     }
 
-    /**
-     * Verify DSPay callback signature.
-     *
-     * @param string $rawBody Raw request body (must be raw, not re-serialized)
-     * @param string $signature X-DSPay-Signature header value
-     * @return bool
-     */
+    public function queryOrder(array $data)
+    {
+        $data['merchantNo'] = $this->requestBuilder->getMerchantNo();
+        if (!isset($data['timestamp'])) $data['timestamp'] = $this->millis();
+        $data['signature'] = $this->requestBuilder->signQuery($data);
+        return $this->postJson('/dspay/public/order/query', $data);
+    }
+
     public function verifyCallback($rawBody, $signature)
     {
         return $this->requestBuilder->verifyCallback($rawBody, $signature);
     }
 
-    /**
-     * @return int Current time in milliseconds.
-     */
+    private function postJson($path, array $body)
+    {
+        if ($this->baseUrl === '') throw new RequestBuilderException('DSPAY_BASE_URL is required');
+        $json = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $context = stream_context_create(array('http' => array(
+            'method' => 'POST',
+            'header' => "Content-Type: application/json\r\nAccept: application/json\r\n",
+            'content' => $json,
+            'ignore_errors' => true,
+            'timeout' => 10,
+        )));
+        $raw = file_get_contents($this->baseUrl . $path, false, $context);
+        $status = 0;
+        if (isset($http_response_header[0]) && preg_match('/\s([0-9]{3})\s/', $http_response_header[0], $m)) {
+            $status = intval($m[1]);
+        }
+        $decoded = json_decode($raw === false ? '' : $raw, true);
+        if ($status < 200 || $status >= 300 || !is_array($decoded)) {
+            throw new RequestBuilderException('DSPay request failed: HTTP ' . $status, $status, $path,
+                is_array($decoded) ? $decoded : array('raw' => $raw));
+        }
+        $resultCode = isset($decoded['code']) ? intval($decoded['code'])
+            : (isset($decoded['header']['resultCode']) ? intval($decoded['header']['resultCode']) : 0);
+        if ($resultCode !== 0) {
+            $message = isset($decoded['message']) ? $decoded['message']
+                : (isset($decoded['header']['message']) ? $decoded['header']['message'] : 'DSPay business error');
+            throw new RequestBuilderException($message, $resultCode, $path, $decoded);
+        }
+        // wallet 统一响应格式为 { code, data, header }；兼容无包装的历史响应。
+        return array_key_exists('data', $decoded) ? $decoded['data'] : $decoded;
+    }
+
     private function millis()
     {
         return intval(microtime(true) * 1000);
-    }
-
-    /**
-     * Keep payAmount as a string to preserve precision and signed bytes.
-     * Merchants use at most 2 decimal places; DSPay reserves the remaining 4.
-     *
-     * @param mixed $value
-     * @return string
-     * @throws RequestBuilderException
-     */
-    private function normalizePayAmount($value)
-    {
-        if (!is_string($value)) {
-            throw new RequestBuilderException('payAmount must be a plain decimal string');
-        }
-
-        $normalized = trim($value);
-        if (!preg_match('/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,2})?$/', $normalized)) {
-            throw new RequestBuilderException(
-                'payAmount must be a plain decimal string with at most 2 decimal places; scientific notation is not allowed'
-            );
-        }
-        if (!preg_match('/[1-9]/', $normalized)) {
-            throw new RequestBuilderException('payAmount must be greater than 0');
-        }
-
-        return $normalized;
     }
 }

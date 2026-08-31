@@ -1,24 +1,22 @@
 <?php
 require __DIR__ . '/../src/bootstrap.php';
 
-use DSPay\Api\Client;
+use DSPay\Api\RequestBuilder;
 
-const MERCHANT_NO = 'change-me-to-your-merchantNo';
-const API_SECRET  = 'change-me-to-your-apiSecret';
+$builder = new RequestBuilder('DSM001', 'demo-secret');
+$order = array(
+    'merchantNo' => 'DSM001',
+    'outOrderNo' => 'PHP-DEMO-001',
+    'productPrice' => '0.01',
+    'productPriceCurrency' => 'USD',
+    'productId' => 'NOVA-LIFETIME-001',
+    'attach' => array('customerId' => 'CUST-1001', 'demo' => 'php'),
+    'payAmount' => '0.01',
+    'allowedPaymentMethods' => array(),
+    'returnUrl' => 'http://localhost:3000/payment/return',
+    'successRedirectUrl' => 'http://localhost:3000/payment/success',
+    'timestamp' => '1787700000000',
+);
 
-$payment = Client::payment(MERCHANT_NO, API_SECRET);
-
-try {
-    $url = $payment->createOrder(array(
-        'outOrderNo'         => 'PHP-DEMO-001',
-        'payAmount'            => '0.01',
-        'productPrice'         => '0.01',
-        'productPriceCurrency' => 'USD',
-        'productId'            => 'NOVA-LIFETIME-001',
-    ));
-
-    echo "[CREATE] Success!" . PHP_EOL;
-    echo "Redirect URL:" . PHP_EOL . $url . PHP_EOL;
-} catch (\DSPay\Api\RequestBuilderException $e) {
-    echo "[CREATE] Error: " . $e->getMessage() . PHP_EOL;
-}
+echo $builder->buildCreatePayload($order) . PHP_EOL;
+echo $builder->signCreate($order) . PHP_EOL;

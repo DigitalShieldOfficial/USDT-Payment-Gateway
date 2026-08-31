@@ -487,24 +487,30 @@
           </div>
 
           <button class="pay-button" id="pay-button" type="button">Pay Now</button>
-          <p class="note">You will be redirected to the Digital Shield Pay order creation page</p>
+          <p class="note">Your merchant server creates the order, then redirects you to DSPay Checkout</p>
         </aside>
       </div>
     </main>
 
     <script>
-      // Stablecoins use 6 decimals. Keep payAmount as a positive plain decimal
-      // string with at most 2 decimal places; DSPay reserves the remaining 4
-      // places for its order suffix. Scientific notation is not allowed.
+      // Keep payAmount as a positive plain decimal string. The public create API
+      // accepts up to 12 integer and 18 fractional digits; scientific notation
+      // should not be used by merchant integrations.
       const CREATE_ORDER_URL = "http://localhost:3000/create?payAmount=0.02&productPrice=0.02&productPriceCurrency=USD&productId=NOVA-LIFETIME-001";
 
       const payButton = document.querySelector("#pay-button");
 
       payButton.addEventListener("click", () => {
         const createOrderUrl = new URL(CREATE_ORDER_URL);
+        let outOrderNo = sessionStorage.getItem("dspayDemoOutOrderNo");
+        if (!outOrderNo) {
+          outOrderNo = `NOVA-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+          sessionStorage.setItem("dspayDemoOutOrderNo", outOrderNo);
+        }
+        createOrderUrl.searchParams.set("outOrderNo", outOrderNo);
 
         payButton.disabled = true;
-        payButton.textContent = "Redirecting to order creation…";
+        payButton.textContent = "Creating secure order…";
         window.location.assign(createOrderUrl.toString());
       });
     </script>

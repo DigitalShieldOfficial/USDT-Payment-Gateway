@@ -1,211 +1,107 @@
 'use strict';
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { URL, URLSearchParams } = require('url');
-const { signOrder, verifyCallback, normalizePayAmount } = require('./signer');
+const { URL } = require('url');
+const { signCreateOrder, signQuery, verifyCallback } = require('./signer');
 
-// ==================== Configuration ====================
+const PORT = Number(process.env.PORT || 3000);
+const DSPAY_BASE_URL = (process.env.DSPAY_BASE_URL || '').replace(/\/$/, '');
+const MERCHANT_NO = process.env.MERCHANT_NO || 'change-me';
+const API_SECRET = process.env.API_SECRET || 'change-me';
+const PUBLIC_BASE_URL = (process.env.PUBLIC_BASE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
 
-const PORT = Number(process.env.PORT) || 3000;
-const CASHIER_BASE = process.env.CASHIER_BASE || 'https://cashier.ds.pro/';
+if (!DSPAY_BASE_URL) throw new Error('DSPAY_BASE_URL is required');
 
-// Log directory and file
-const LOG_DIR = path.join(__dirname, '..', 'logs');
-const LOG_FILE = path.join(LOG_DIR, 'server.log');
-
-// ==================== Logger ====================
-
-// Ensure logs directory exists
-if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
+function json(res, status, body) {
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(body));
 }
 
-const logStream = fs.createWriteStream(LOG_FILE, { flags: 'a' });
-
-/**
- * Write to both console and log file with timestamp.
- * @param {'INFO'|'ERROR'} level
- * @param {...any} args
- */
-function log(level, ...args) {
-    const ts = new Date().toISOString();
-    const prefix = `[${ts}] [${level}]`;
-    const msg = [prefix, ...args].join(' ');
-
-    if (level === 'ERROR') {
-        console.error(msg);
-    } else {
-        console.log(msg);
-    }
-    logStream.write(msg + '\n');
-}
-
-const info = (...args) => log('INFO', ...args);
-const error = (...args) => log('ERROR', ...args);
-
-// ---------------------------------------------------------------------------
-// [Security] Hardcoded merchant credentials (with env var fallback)
-//
-// merchantNo and apiSecret are hardcoded in the server code. All external
-// requests use these fixed credentials for signing. Query parameters for
-// other merchant IDs or secrets are deliberately ignored.
-//
-// This prevents attackers from switching merchant identity via query params
-// to bypass signature verification.
-//
-// To change credentials, edit the values below or set env vars and restart.
-// In production, credentials should come from config center / DB / KMS,
-// never from code files or environment variables.
-// ---------------------------------------------------------------------------
-const MERCHANT_NO = process.env.MERCHANT_NO || 'change-me-to-your-merchantNo';
-const API_SECRET = process.env.API_SECRET || 'change-me-to-your-apiSecret';
-
-// Default business params (overridable via query string, fallback to these)
-const FIXED_PARAMS = {
-    // Stablecoins use 6 decimals. Merchants may submit at most 2 decimal places;
-    // DSPay reserves the remaining 4 for order suffixes (error 50612 otherwise).
-    payAmount: '0.01',
-    productPrice: '0.01',
-    productPriceCurrency: 'USD',
-    productId: 'NOVA-LIFETIME-001',
-};
-
-// ==================== Server ====================
-
-const server = http.createServer((req, res) => {
-    const url = new URL(req.url, `http://localhost:${PORT}`);
-    const path = url.pathname;
-
-    if (path === '/create' && req.method === 'GET') {
-        return handleCreate(url, res);
-    }
-    if (path === '/notify' && req.method === 'POST') {
-        return handleNotify(req, res);
-    }
-
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ code: 'NOT_FOUND', msg: `unknown path: ${req.method} ${path}` }));
-});
-
-// ==================== /create: Create order + redirect to cashier ====================
-
-/**
- * Full-param order creation endpoint.
- *
- * Optional params (fallback to FIXED_PARAMS defaults):
- *   payAmount, productPrice, productPriceCurrency, productId
- *
- * Examples:
- *   /create                           → all defaults
- *   /create?payAmount=100             → custom amount
- *   /create?payAmount=50&productId=88 → custom fields
- */
-function handleCreate(url, res) {
-    const p = url.searchParams;
-
-    // merchantNo and apiSecret are hardcoded server-side — query params ignored
-    // to prevent identity spoofing via arbitrary merchant credentials
-    const merchantNo = MERCHANT_NO;
-    const apiSecret = API_SECRET;
-
-    // Read optional params (query overrides FIXED_PARAMS defaults)
-    let payAmount;
-    try {
-        payAmount = normalizePayAmount(p.get('payAmount') || FIXED_PARAMS.payAmount);
-    } catch (validationError) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        return res.end(JSON.stringify({ code: 'FAIL', msg: validationError.message }));
-    }
-    const productPrice = p.get('productPrice') || FIXED_PARAMS.productPrice;
-    const productPriceCurrency = p.get('productPriceCurrency') || FIXED_PARAMS.productPriceCurrency;
-    const productId = p.get('productId') || FIXED_PARAMS.productId;
-    const outOrderNo = String(Date.now());
-    const timestamp = Date.now();
-
-    // Sign order (4-field canonical signature)
-    const signature = signOrder(
-        { merchantNo, outOrderNo, payAmount, timestamp },
-        apiSecret
-    );
-
-    // Build cashier redirect URL
-    const params = new URLSearchParams();
-    params.set('merchantNo', merchantNo);
-    params.set('outOrderNo', outOrderNo);
-    params.set('payAmount', payAmount);
-    params.set('timestamp', String(timestamp));
-    params.set('signature', signature);
-    params.set('productPrice', productPrice);
-    params.set('productPriceCurrency', productPriceCurrency);
-    params.set('productId', productId);
-    const redirectUrl = CASHIER_BASE + '?' + params.toString();
-
-    info(`[CREATE] merchantNo=${merchantNo} outOrderNo=${outOrderNo} payAmount=${payAmount} timestamp=${timestamp}`);
-    info(`[CREATE] signature=${signature}`);
-    info(`[CREATE] redirect → ${redirectUrl}`);
-
-    res.writeHead(302, {
-        Location: redirectUrl,
-        'Content-Type': 'text/plain; charset=utf-8',
+async function post(path, body) {
+    const response = await fetch(`${DSPAY_BASE_URL}${path}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
-    res.end(`Redirecting to ${redirectUrl}`);
+    const raw = await response.text();
+    let result;
+    try { result = JSON.parse(raw); } catch { result = { raw }; }
+    if (!response.ok) throw Object.assign(new Error(`DSPay HTTP ${response.status}`), { status: response.status, result });
+    const resultCode = result?.code ?? result?.header?.resultCode ?? 0;
+    if (resultCode !== 0) {
+        throw Object.assign(new Error(result?.message || result?.header?.message || `DSPay code ${resultCode}`), {
+            status: 502, result,
+        });
+    }
+    // wallet 统一响应格式为 { code, data, header }；兼容无包装的历史响应。
+    return Object.prototype.hasOwnProperty.call(result, 'data') ? result.data : result;
 }
 
-// ==================== /notify: Receive DSPay callback + verify signature ====================
+async function createOrder(url, res) {
+    const outOrderNo = url.searchParams.get('outOrderNo') || `DEMO-${Date.now()}`;
+    const order = {
+        merchantNo: MERCHANT_NO,
+        outOrderNo,
+        productPrice: url.searchParams.get('productPrice') || '0.02',
+        productPriceCurrency: 'USD',
+        productId: url.searchParams.get('productId') || 'NOVA-LIFETIME-001',
+        attach: { demo: 'nodejs', customerId: 'CUST-1001' },
+        payAmount: url.searchParams.get('payAmount') || '0.02',
+        allowedPaymentMethods: [],
+        returnUrl: `${PUBLIC_BASE_URL}/payment/return?outOrderNo=${encodeURIComponent(outOrderNo)}`,
+        successRedirectUrl: `${PUBLIC_BASE_URL}/payment/success?outOrderNo=${encodeURIComponent(outOrderNo)}`,
+        timestamp: Date.now(),
+    };
+    const signed = signCreateOrder(order, API_SECRET);
+    console.log('[CREATE canonical]', signed.canonical);
+    const result = await post('/dspay/public/order/create', { ...order, signature: signed.signature });
+    if (!result.checkoutUrl) return json(res, 502, { code: 'INVALID_DSPAY_RESPONSE', result });
+    res.writeHead(302, { Location: result.checkoutUrl });
+    res.end();
+}
 
-function handleNotify(req, res) {
+async function queryOrder(url, res) {
+    const query = { merchantNo: MERCHANT_NO, timestamp: Date.now() };
+    if (url.searchParams.get('orderNo')) query.orderNo = url.searchParams.get('orderNo');
+    if (url.searchParams.get('outOrderNo')) query.outOrderNo = url.searchParams.get('outOrderNo');
+    if (!query.orderNo && !query.outOrderNo) return json(res, 400, { code: 'ORDER_NO_REQUIRED' });
+    const signed = signQuery(query, API_SECRET);
+    const result = await post('/dspay/public/order/query', { ...query, signature: signed.signature });
+    json(res, 200, result);
+}
+
+function notify(req, res) {
     const chunks = [];
-    req.on('data', (c) => chunks.push(c));
+    req.on('data', (chunk) => chunks.push(chunk));
     req.on('end', () => {
         const rawBody = Buffer.concat(chunks).toString('utf8');
-        const signatureHeader = req.headers['x-dspay-signature'] || '';
-
-        // apiSecret: always use the hardcoded server-side value — never trust query params
-        const apiSecret = API_SECRET;
-
-        info(`[NOTIFY] received, length=${rawBody.length}`);
-        info(`[NOTIFY] X-DSPay-Signature=${signatureHeader}`);
-        info(`[NOTIFY] body=${rawBody}`);
-
-        if (!apiSecret) {
-            error('[NOTIFY] API_SECRET not configured; set env var or edit src/server.js');
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({
-                code: 'FAIL',
-                msg: 'API_SECRET not configured; set env var or edit src/server.js',
-            }));
+        if (!verifyCallback(rawBody, req.headers['x-dspay-signature'], API_SECRET)) {
+            return json(res, 401, { code: 'FAIL', msg: 'signature invalid' });
         }
-
-        const ok = verifyCallback(rawBody, signatureHeader, apiSecret);
-        info(`[NOTIFY] verify=${ok}`);
-
-        if (!ok) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify({ code: 'FAIL', msg: 'signature invalid' }));
-        }
-
-        // Signature valid: parse business fields (log only; production should persist + idempotent)
-        try {
-            const payload = JSON.parse(rawBody);
-            info(`[NOTIFY] ✓ orderNo=${payload.orderNo} status=${payload.status} amount=${payload.payAmount}`);
-        } catch (e) {
-            info('[NOTIFY] body is not JSON, skipping parse');
-        }
-
-        // DSPay requires strictly uppercase "SUCCESS", otherwise it will retry
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ code: 'SUCCESS', msg: 'ok' }));
+        const payload = JSON.parse(rawBody);
+        console.log('[NOTIFY verified]', payload.orderNo, payload.eventType, payload.receivingAddress);
+        // Production: idempotently commit local business state before responding SUCCESS.
+        json(res, 200, { code: 'SUCCESS', msg: 'ok' });
     });
 }
 
-// ==================== Startup ====================
+const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, PUBLIC_BASE_URL);
+    try {
+        if (req.method === 'GET' && url.pathname === '/create') return await createOrder(url, res);
+        if (req.method === 'GET' && url.pathname === '/query') return await queryOrder(url, res);
+        if (req.method === 'POST' && url.pathname === '/notify') return notify(req, res);
+        if (req.method === 'GET' && ['/payment/return', '/payment/success'].includes(url.pathname)) {
+            const target = `/query?outOrderNo=${encodeURIComponent(url.searchParams.get('outOrderNo') || '')}`;
+            res.writeHead(302, { Location: target }); return res.end();
+        }
+        json(res, 404, { code: 'NOT_FOUND' });
+    } catch (error) {
+        console.error(error);
+        json(res, error.status || 500, { code: 'DEMO_ERROR', message: error.message, dspay: error.result });
+    }
+});
 
 server.listen(PORT, () => {
-    info(`DSPay mock merchant running at http://localhost:${PORT}`);
-    info(`  merchantNo: ${MERCHANT_NO}`);
-    info(`  GET  /create?payAmount=0.01&productPrice=0.01&productPriceCurrency=USD&productId=123`);
-    info(`  POST /notify  → Receive DSPay callback + verify signature (apiSecret hardcoded)`);
-    info(`  cashier base: ${CASHIER_BASE}`);
+    console.log(`Mock merchant: ${PUBLIC_BASE_URL}`);
+    console.log(`DSPay API: ${DSPAY_BASE_URL}`);
+    console.log('GET /create -> server-side create order -> 302 checkoutUrl');
 });

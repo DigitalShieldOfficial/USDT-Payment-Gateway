@@ -1,329 +1,142 @@
 import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.math.BigDecimal;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-/**
- * DSPay mock merchant (Java version).
- *
- * <p>Zero dependencies — JDK built-in com.sun.net.httpserver + javax.crypto.
- * Run with Java 11+: {@code java DspayMockMerchant.java}
- *
- * <p>Two endpoints, matching the Node.js implementation:
- * <ul>
- *   <li>GET  /create?payAmount=&amp;productPrice=&amp;productPriceCurrency=&amp;productId=
- *       — create order + 302 redirect to cashier</li>
- *   <li>POST /notify
- *       — receive DSPay callback + verify signature</li>
- * </ul>
- */
+/** Zero-dependency DSPay mock merchant. Run: java src/DspayMockMerchant.java */
 public class DspayMockMerchant {
-
-    // ==================== Configuration ====================
-
-    private static final int PORT = Integer.parseInt(System.getProperty("port", "3000"));
-    private static final String CASHIER_BASE =
-            System.getProperty("cashierBase", "https://cashier.ds.pro/");
-
-    // Credentials — hardcoded defaults, override via -DmerchantNo=xxx -DapiSecret=xxx
-    private static final String MERCHANT_NO =
-            System.getProperty("merchantNo", "change-me-to-your-merchantNo");
-    private static final String API_SECRET =
-            System.getProperty("apiSecret", "change-me-to-your-apiSecret");
-
-    // Default business params (overridable via query string, same as Node.js FIXED_PARAMS)
-    // Stablecoins are treated as 6-decimal tokens. Merchants may use at most
-    // 2 decimal places; DSPay reserves the remaining 4 places for its order suffix.
-    // Keep payAmount as a plain decimal string. Never use double/float or scientific notation.
-    private static final String DEFAULT_PAY_AMOUNT = "0.01";
-    private static final String DEFAULT_PRODUCT_PRICE = "0.01";
-    private static final String DEFAULT_PRODUCT_PRICE_CURRENCY = "USD";
-    private static final String DEFAULT_PRODUCT_ID = "NOVA-LIFETIME-001";
-
-    // ==================== Logger ====================
-
-    private static final Path LOG_DIR = Paths.get("logs");
-    private static final Path LOG_FILE = LOG_DIR.resolve("server.log");
-    private static PrintWriter logWriter;
-
-    static {
-        try {
-            Files.createDirectories(LOG_DIR);
-            logWriter = new PrintWriter(Files.newBufferedWriter(
-                    LOG_FILE, StandardOpenOption.CREATE, StandardOpenOption.APPEND), true);
-        } catch (IOException e) {
-            logWriter = new PrintWriter(System.out, true);
-        }
-    }
-
-    private static void log(String level, String msg) {
-        String line = "[" + Instant.now() + "] [" + level + "] " + msg;
-        if ("ERROR".equals(level)) {
-            System.err.println(line);
-        } else {
-            System.out.println(line);
-        }
-        logWriter.println(line);
-    }
-
-    private static void info(String msg) { log("INFO", msg); }
-
-    private static void error(String msg) { log("ERROR", msg); }
-
-    // ==================== Startup ====================
+    static final int PORT = Integer.parseInt(System.getProperty("port", "3000"));
+    static final String DSPAY_BASE = trimSlash(System.getProperty("dspayBase", ""));
+    static final String PUBLIC_BASE = trimSlash(System.getProperty("publicBase", "http://localhost:" + PORT));
+    static final String MERCHANT_NO = System.getProperty("merchantNo", "change-me");
+    static final String API_SECRET = System.getProperty("apiSecret", "change-me");
+    static final HttpClient HTTP = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
 
     public static void main(String[] args) throws IOException {
+        if (DSPAY_BASE.isEmpty()) throw new IllegalStateException("-DdspayBase is required");
         HttpServer server = HttpServer.create(new InetSocketAddress(PORT), 0);
-        server.createContext("/create", new CreateHandler());
-        server.createContext("/notify", new NotifyHandler());
-        server.setExecutor(null);
+        server.createContext("/create", DspayMockMerchant::create);
+        server.createContext("/notify", DspayMockMerchant::notify);
+        server.createContext("/payment/return", DspayMockMerchant::landing);
+        server.createContext("/payment/success", DspayMockMerchant::landing);
         server.start();
-        info("DSPay mock merchant running at http://localhost:" + PORT);
-        info("  merchantNo: " + MERCHANT_NO);
-        info("  GET  /create?payAmount=0.01&productPrice=0.01&productPriceCurrency=USD&productId=123");
-        info("  POST /notify  -> Receive DSPay callback + verify signature (apiSecret hardcoded)");
-        info("  cashier base: " + CASHIER_BASE);
+        System.out.println("Mock merchant: " + PUBLIC_BASE);
+        System.out.println("DSPay API: " + DSPAY_BASE);
     }
 
-    // ==================== /create — create order + redirect to cashier ====================
+    static void create(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) { send(exchange, 405, "{\"code\":\"FAIL\"}"); return; }
+        Map<String, String> q = query(exchange.getRequestURI().getRawQuery());
+        String outOrderNo = q.getOrDefault("outOrderNo", "JAVA-DEMO-" + System.currentTimeMillis());
+        String productPrice = q.getOrDefault("productPrice", "0.02");
+        String productId = q.getOrDefault("productId", "NOVA-LIFETIME-001");
+        String payAmount = q.getOrDefault("payAmount", "0.02");
+        String attach = "{\"customerId\":\"CUST-1001\",\"demo\":\"java\"}"; // keys sorted
+        String returnUrl = PUBLIC_BASE + "/payment/return?outOrderNo=" + enc(outOrderNo);
+        String successUrl = PUBLIC_BASE + "/payment/success?outOrderNo=" + enc(outOrderNo);
+        long timestamp = System.currentTimeMillis();
 
-    static class CreateHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if (!"GET".equalsIgnoreCase(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, "{\"code\":\"FAIL\",\"msg\":\"method not allowed\"}");
-                return;
-            }
-            Map<String, String> q = parseQuery(exchange.getRequestURI().getQuery());
-
-            // Read optional params (query overrides defaults)
-            String payAmount;
-            try {
-                payAmount = normalizePayAmount(q.getOrDefault("payAmount", DEFAULT_PAY_AMOUNT));
-            } catch (IllegalArgumentException e) {
-                sendJson(exchange, 400,
-                        "{\"code\":\"FAIL\",\"msg\":\"payAmount must be a positive plain decimal string with at most 2 decimal places; scientific notation is not allowed\"}");
-                return;
-            }
-            String productPrice = q.getOrDefault("productPrice", DEFAULT_PRODUCT_PRICE);
-            String productPriceCurrency = q.getOrDefault("productPriceCurrency", DEFAULT_PRODUCT_PRICE_CURRENCY);
-            String productId = q.getOrDefault("productId", DEFAULT_PRODUCT_ID);
-            String outOrderNo = String.valueOf(System.currentTimeMillis());
-            long timestamp = System.currentTimeMillis();
-
-            // Sign order (4-field canonical signature, field order matters)
-            String signature = signOrder(MERCHANT_NO, outOrderNo, payAmount, timestamp, API_SECRET);
-
-            // Build cashier redirect URL
-            Map<String, String> urlParams = new LinkedHashMap<>();
-            urlParams.put("merchantNo", MERCHANT_NO);
-            urlParams.put("outOrderNo", outOrderNo);
-            urlParams.put("payAmount", payAmount);
-            urlParams.put("timestamp", String.valueOf(timestamp));
-            urlParams.put("signature", signature);
-            urlParams.put("productPrice", productPrice);
-            urlParams.put("productPriceCurrency", productPriceCurrency);
-            urlParams.put("productId", productId);
-
-            StringBuilder url = new StringBuilder(CASHIER_BASE).append("?");
-            boolean first = true;
-            for (Map.Entry<String, String> e : urlParams.entrySet()) {
-                if (!first) url.append("&");
-                url.append(URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8));
-                url.append("=");
-                url.append(URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8));
-                first = false;
-            }
-            String redirectUrl = url.toString();
-
-            info("[CREATE] merchantNo=" + MERCHANT_NO + " outOrderNo=" + outOrderNo
-                    + " payAmount=" + payAmount + " timestamp=" + timestamp);
-            info("[CREATE] signature=" + signature);
-            info("[CREATE] redirect -> " + redirectUrl);
-
-            byte[] body = ("Redirecting to " + redirectUrl).getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Location", redirectUrl);
-            exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
-            exchange.sendResponseHeaders(302, body.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(body);
-            }
-        }
-    }
-
-    // ==================== /notify — receive DSPay callback + verify signature ====================
-
-    static class NotifyHandler implements HttpHandler {
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, "{\"code\":\"FAIL\",\"msg\":\"method not allowed\"}");
-                return;
-            }
-            // Read raw body — must use raw bytes, not JSON parse-then-serialize
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            byte[] buf = new byte[4096];
-            int n;
-            while ((n = exchange.getRequestBody().read(buf)) != -1) {
-                bos.write(buf, 0, n);
-            }
-            String rawBody = bos.toString(StandardCharsets.UTF_8);
-            String signatureHeader = exchange.getRequestHeaders().getFirst("X-DSPay-Signature");
-            if (signatureHeader == null) signatureHeader = "";
-
-            info("[NOTIFY] received, length=" + rawBody.length());
-            info("[NOTIFY] X-DSPay-Signature=" + signatureHeader);
-            info("[NOTIFY] body=" + rawBody);
-
-            if (API_SECRET == null || API_SECRET.isEmpty()) {
-                error("[NOTIFY] API_SECRET not configured; set env var or -DapiSecret=xxx");
-                sendJson(exchange, 500,
-                        "{\"code\":\"FAIL\",\"msg\":\"API_SECRET not configured; set env var or -DapiSecret=xxx\"}");
-                return;
-            }
-
-            boolean ok = verifyCallback(rawBody, signatureHeader, API_SECRET);
-            info("[NOTIFY] verify=" + ok);
-
-            if (!ok) {
-                sendJson(exchange, 401, "{\"code\":\"FAIL\",\"msg\":\"signature invalid\"}");
-                return;
-            }
-
-            // Log verified payload (best-effort parse)
-            try {
-                info("[NOTIFY] ✓ verified, rawBody=" + rawBody);
-            } catch (Exception ignore) {
-                info("[NOTIFY] body is not JSON, skipping parse");
-            }
-
-            // DSPay requires strictly uppercase "SUCCESS", otherwise it will retry
-            sendJson(exchange, 200, "{\"code\":\"SUCCESS\",\"msg\":\"ok\"}");
-        }
-    }
-
-    // ==================== Signature utilities ====================
-
-    /**
-     * Create order signature: canonical string -> HMAC-SHA256 -> lowercase hex.
-     * Signed fields and order (order-sensitive):
-     * merchantNo -> outOrderNo -> payAmount -> timestamp
-     */
-    static String signOrder(String merchantNo, String outOrderNo,
-                            String payAmount, long timestamp, String apiSecret) {
-        String normalizedOutOrderNo = requireOutOrderNo(outOrderNo);
-        String normalizedPayAmount = normalizePayAmount(payAmount);
         String canonical = String.join("&",
-                "merchantNo=" + merchantNo,
-                "outOrderNo=" + normalizedOutOrderNo,
-                "payAmount=" + normalizedPayAmount,
+                "merchantNo=" + MERCHANT_NO,
+                "outOrderNo=" + outOrderNo,
+                "productPrice=" + productPrice,
+                "productPriceCurrency=USD",
+                "productId=" + productId,
+                "attach=" + attach,
+                "payAmount=" + payAmount,
+                "allowedPaymentMethods=",
+                "returnUrl=" + returnUrl,
+                "successRedirectUrl=" + successUrl,
                 "timestamp=" + timestamp);
-        return hmacSha256Hex(canonical, apiSecret);
-    }
-
-    /**
-     * Verify callback signature: HMAC-SHA256 over raw body, constant-time compare
-     * against X-DSPay-Signature header.
-     */
-    static boolean verifyCallback(String rawBody, String signature, String apiSecret) {
-        if (apiSecret == null || apiSecret.isEmpty() || rawBody == null || signature == null) {
-            return false;
+        String signature = hmac(canonical, API_SECRET);
+        String body = "{" +
+                "\"merchantNo\":\"" + esc(MERCHANT_NO) + "\"," +
+                "\"outOrderNo\":\"" + esc(outOrderNo) + "\"," +
+                "\"productPrice\":\"" + esc(productPrice) + "\"," +
+                "\"productPriceCurrency\":\"USD\"," +
+                "\"productId\":\"" + esc(productId) + "\"," +
+                "\"attach\":" + attach + "," +
+                "\"payAmount\":\"" + esc(payAmount) + "\"," +
+                "\"allowedPaymentMethods\":[]," +
+                "\"returnUrl\":\"" + esc(returnUrl) + "\"," +
+                "\"successRedirectUrl\":\"" + esc(successUrl) + "\"," +
+                "\"timestamp\":" + timestamp + "," +
+                "\"signature\":\"" + signature + "\"}";
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(DSPAY_BASE + "/dspay/public/order/create"))
+                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
+            HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) { send(exchange, response.statusCode(), response.body()); return; }
+            String checkoutUrl = jsonString(response.body(), "checkoutUrl");
+            if (checkoutUrl == null) { send(exchange, 502, response.body()); return; }
+            exchange.getResponseHeaders().set("Location", checkoutUrl);
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt(); send(exchange, 500, "{\"code\":\"INTERRUPTED\"}");
         }
-        String expected = hmacSha256Hex(rawBody, apiSecret);
-        if (expected.isEmpty()) return false;
-        return MessageDigest.isEqual(
-                expected.getBytes(StandardCharsets.UTF_8),
-                signature.toLowerCase().getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String hmacSha256Hex(String payload, String secret) {
+    static void notify(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) { send(exchange, 405, "{\"code\":\"FAIL\"}"); return; }
+        String raw = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        String signature = exchange.getRequestHeaders().getFirst("X-DSPay-Signature");
+        String expected = hmac(raw, API_SECRET);
+        boolean valid = signature != null && MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), signature.toLowerCase().getBytes(StandardCharsets.UTF_8));
+        if (!valid) { send(exchange, 401, "{\"code\":\"FAIL\",\"msg\":\"signature invalid\"}"); return; }
+        System.out.println("[NOTIFY verified] " + raw);
+        // Production: idempotently commit local state before SUCCESS.
+        send(exchange, 200, "{\"code\":\"SUCCESS\",\"msg\":\"ok\"}");
+    }
+
+    static void landing(HttpExchange exchange) throws IOException {
+        String outOrderNo = query(exchange.getRequestURI().getRawQuery()).getOrDefault("outOrderNo", "");
+        send(exchange, 200, "{\"message\":\"Redirect is not proof of payment; call POST /dspay/public/order/query\",\"outOrderNo\":\"" + esc(outOrderNo) + "\"}");
+    }
+
+    static String hmac(String payload, String secret) {
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            return toHex(mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception e) {
-            throw new IllegalStateException("HMAC-SHA256 failed", e);
-        }
+            StringBuilder out = new StringBuilder();
+            for (byte b : mac.doFinal(payload.getBytes(StandardCharsets.UTF_8))) out.append(String.format("%02x", b));
+            return out.toString();
+        } catch (Exception e) { throw new IllegalStateException(e); }
     }
 
-    private static String toHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder(bytes.length * 2);
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
+    static Map<String, String> query(String raw) {
+        Map<String, String> values = new LinkedHashMap<>();
+        if (raw == null) return values;
+        for (String pair : raw.split("&")) {
+            int i = pair.indexOf('=');
+            if (i > 0) values.put(URLDecoder.decode(pair.substring(0, i), StandardCharsets.UTF_8), URLDecoder.decode(pair.substring(i + 1), StandardCharsets.UTF_8));
         }
-        return sb.toString();
+        return values;
     }
-
-    static String requireOutOrderNo(String value) {
-        if (value == null || value.trim().isEmpty() || value.trim().length() > 64) {
-            throw new IllegalArgumentException(
-                    "outOrderNo is required, must not be blank, and must be <= 64 characters");
-        }
-        return value.trim();
+    static String jsonString(String json, String key) {
+        Matcher m = Pattern.compile("\\\"" + key + "\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"").matcher(json);
+        return m.find() ? m.group(1).replace("\\/", "/") : null;
     }
-
-    /**
-     * Preserve payAmount as a plain decimal string so signing and cashier URL use
-     * identical bytes. Stablecoins use 6 decimals: merchants use at most 2 and
-     * DSPay reserves the remaining 4 for its order suffix (error 50612 otherwise).
-     */
-    static String normalizePayAmount(String value) {
-        if (value == null) {
-            throw new IllegalArgumentException("payAmount is required");
-        }
-        String normalized = value.trim();
-        if (!normalized.matches("(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?")) {
-            throw new IllegalArgumentException(
-                    "payAmount must be a plain decimal string with at most 2 decimal places");
-        }
-        BigDecimal amount = new BigDecimal(normalized);
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("payAmount must be greater than 0");
-        }
-        return normalized;
+    static void send(HttpExchange e, int status, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8); e.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        e.sendResponseHeaders(status, bytes.length); e.getResponseBody().write(bytes); e.close();
     }
-
-    // ==================== HTTP helpers ====================
-
-    private static Map<String, String> parseQuery(String query) {
-        Map<String, String> map = new LinkedHashMap<>();
-        if (query == null || query.isEmpty()) return map;
-        for (String pair : query.split("&")) {
-            int idx = pair.indexOf('=');
-            if (idx > 0) {
-                String k = URLDecoder.decode(pair.substring(0, idx), StandardCharsets.UTF_8);
-                String v = URLDecoder.decode(pair.substring(idx + 1), StandardCharsets.UTF_8);
-                map.put(k, v);
-            }
-        }
-        return map;
-    }
-
-    private static void sendJson(HttpExchange exchange, int status, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(status, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
+    static String enc(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8); }
+    static String esc(String value) { return value.replace("\\", "\\\\").replace("\"", "\\\""); }
+    static String trimSlash(String value) { return value.endsWith("/") ? value.substring(0, value.length() - 1) : value; }
 }
