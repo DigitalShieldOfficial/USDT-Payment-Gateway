@@ -2,7 +2,7 @@
 
 # DSPay Java Mock Merchant
 
-JDK 11+, zero external dependencies. It calls `POST /dspay/public/order/create`, redirects to the returned `checkoutUrl`, and verifies raw-body webhooks.
+JDK 11+, zero external dependencies. It calls `POST /dspay/public/order/create`, redirects to the returned `checkoutUrl`, and verifies webhooks using the shared ASCII-sorted canonical field string.
 
 Runtime baseline: JDK 11 minimum; tested with Microsoft OpenJDK `11.0.27` and Eclipse Temurin `21.0.11`. Maven and Gradle are not required; the source uses only the JDK standard library and supports JDK 11 single-file source launch.
 
@@ -16,7 +16,7 @@ java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL
 ```
 
 - `GET /create`: create the order server-to-server and redirect
-- `POST /notify`: verify `X-DSPay-Signature` over the exact raw body
+- `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
 - the timeout landing page is informational only; query `POST /dspay/public/order/query` before fulfillment
 
 Compile and run the local test:

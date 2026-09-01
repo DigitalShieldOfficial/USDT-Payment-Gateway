@@ -1,14 +1,14 @@
 public class DspayMockMerchantTest {
     public static void main(String[] args) {
-        String canonical = "merchantNo=DSM001&outOrderNo=M001&productPrice=&productPriceCurrency="
-                + "&productId=&attach=&payAmount=1.00&allowedPaymentMethods=&returnUrl="
-                + "&successRedirectUrl=&timestamp=1787700000000";
-        assertEquals("9507a6d35f0df0eb4c909194652c53b0da52280452e7159f330b5ed2dd9581f1",
+        String canonical = "merchantNo=DSM001&outOrderNo=M001&payAmount=1.00&timestamp=1787700000000";
+        assertEquals("e522c9b170a8e9389f86170ed3b5f05c8a52e14374ec6166799f97b5f409d68b",
                 DspayMockMerchant.hmac(canonical, "demo-secret"), "create signature");
 
-        String raw = "{\"notifyNo\":\"N001\",\"status\":\"COMPLETED\"}";
-        String signature = DspayMockMerchant.hmac(raw, "demo-secret");
-        assertEquals(signature, DspayMockMerchant.hmac(raw, "demo-secret"), "raw callback signature");
+        String raw = "{\"status\":\"COMPLETED\",\"txHash\":null,\"notifyNo\":\"N001\",\"attach\":{\"z\":1.0,\"a\":true}}";
+        String callbackCanonical = DspayMockMerchant.canonicalCallback(raw);
+        assertEquals("attach={\"a\":true,\"z\":1}&notifyNo=N001&status=COMPLETED", callbackCanonical, "callback canonical");
+        String signature = DspayMockMerchant.hmac(callbackCanonical, "demo-secret");
+        assertEquals(signature, DspayMockMerchant.hmac(callbackCanonical, "demo-secret"), "callback signature");
         System.out.println("DspayMockMerchantTest: PASS");
     }
 

@@ -59,35 +59,56 @@ function hmac(payload, apiSecret) {
     return crypto.createHmac('sha256', apiSecret).update(payload, 'utf8').digest('hex');
 }
 
+function canonicalFields(fields) {
+    return Object.keys(fields)
+        .filter((key) => fields[key] !== null && fields[key] !== undefined)
+        .filter((key) => key !== 'signature')
+        .sort()
+        .map((key) => `${key}=${canonicalFieldValue(fields[key])}`)
+        .join('&');
+}
+
+function canonicalFieldValue(value) {
+    if (typeof value === 'string') return text(value);
+    if (typeof value === 'number') return numberToPlainString(value);
+    if (typeof value === 'boolean') return String(value);
+    return canonicalJson(value);
+}
+
 function signCreateOrder(order, apiSecret) {
-    const canonical = [
-        `merchantNo=${text(order.merchantNo)}`,
-        `outOrderNo=${text(order.outOrderNo)}`,
-        `productPrice=${decimal(order.productPrice)}`,
-        `productPriceCurrency=${text(order.productPriceCurrency)}`,
-        `productId=${text(order.productId)}`,
-        `attach=${canonicalJson(order.attach)}`,
-        `payAmount=${decimal(order.payAmount)}`,
-        `allowedPaymentMethods=${canonicalMethods(order.allowedPaymentMethods)}`,
-        `returnUrl=${text(order.returnUrl)}`,
-        `successRedirectUrl=${text(order.successRedirectUrl)}`,
-        `timestamp=${order.timestamp == null ? '' : order.timestamp}`,
-    ].join('&');
+    const canonical = canonicalFields({
+        merchantNo: order.merchantNo == null ? null : text(order.merchantNo),
+        outOrderNo: order.outOrderNo == null ? null : text(order.outOrderNo),
+        productPrice: order.productPrice == null ? null : decimal(order.productPrice),
+        productPriceCurrency: order.productPriceCurrency == null ? null : text(order.productPriceCurrency),
+        productId: order.productId == null ? null : text(order.productId),
+        attach: order.attach == null ? null : canonicalJson(order.attach),
+        payAmount: order.payAmount == null ? null : decimal(order.payAmount),
+        allowedPaymentMethods: order.allowedPaymentMethods == null ? null : canonicalMethods(order.allowedPaymentMethods),
+        returnUrl: order.returnUrl == null ? null : text(order.returnUrl),
+        successRedirectUrl: order.successRedirectUrl == null ? null : text(order.successRedirectUrl),
+        timestamp: order.timestamp == null ? null : order.timestamp,
+    });
     return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
 function signQuery(query, apiSecret) {
-    const fields = [`merchantNo=${text(query.merchantNo)}`];
-    if (text(query.orderNo)) fields.push(`orderNo=${text(query.orderNo)}`);
-    if (text(query.outOrderNo)) fields.push(`outOrderNo=${text(query.outOrderNo)}`);
-    fields.push(`timestamp=${query.timestamp}`);
-    const canonical = fields.join('&');
+    const fields = {
+        merchantNo: query.merchantNo == null ? null : text(query.merchantNo),
+        timestamp: query.timestamp == null ? null : query.timestamp,
+    };
+    if (query.orderNo !== null && query.orderNo !== undefined) fields.orderNo = text(query.orderNo);
+    if (query.outOrderNo !== null && query.outOrderNo !== undefined) fields.outOrderNo = text(query.outOrderNo);
+    const canonical = canonicalFields(fields);
     return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
 function verifyCallback(rawBody, signature, apiSecret) {
     if (!rawBody || !signature || !apiSecret) return false;
-    const expected = Buffer.from(hmac(rawBody, apiSecret), 'utf8');
+    let body;
+    try { body = JSON.parse(rawBody); } catch (_) { return false; }
+    if (!body || Array.isArray(body) || typeof body !== 'object') return false;
+    const expected = Buffer.from(hmac(canonicalFields(body), apiSecret), 'utf8');
     const actual = Buffer.from(String(signature).toLowerCase(), 'utf8');
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }

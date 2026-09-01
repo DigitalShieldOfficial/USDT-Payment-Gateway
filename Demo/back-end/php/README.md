@@ -19,7 +19,7 @@ export PUBLIC_BASE_URL="http://localhost:3000"
 
 - `GET /create`: call `POST /dspay/public/order/create`, then 302 to returned `checkoutUrl`
 - `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
-- `POST /notify`: verify `X-DSPay-Signature` over the exact raw body
+- `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
 - timeout and success pages query DSPay; redirects are never proof of payment
 
 Run local tests:
