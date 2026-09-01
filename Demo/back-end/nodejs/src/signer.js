@@ -2,98 +2,94 @@
 
 const crypto = require('crypto');
 
-/**
- * DSPay signature utilities
- *
- * Both directions share the same apiSecret:
- *   - signOrder      merchant → DSPay: 4-field canonical signature for order creation
- *   - verifyCallback DSPay → merchant: HMAC-SHA256 over raw callback body
- */
+const text = (v) => (v == null ? '' : String(v).trim());
+const decimal = (v) => (v == null || v === '' ? '' : String(v));
 
-/**
- * Create order signature: canonical string → HMAC-SHA256 → lowercase hex.
- *
- * Signed fields and order (order-sensitive):
- *   merchantNo → outOrderNo → payAmount → timestamp
- *
- * HMAC-SHA256 is byte-sequence-sensitive; wrong field order results in
- * signature mismatch and verification failure (error code 50613).
- *
- * @param {object} p
- * @param {string} p.merchantNo  Merchant ID
- * @param {string} p.outOrderNo  Required merchant external order number (non-blank, max 64 characters)
- * @param {string} p.payAmount  Positive plain decimal string with at most 2 decimal
- *   places. Stablecoins use 6 decimals; DSPay reserves the remaining 4 for its suffix.
- * @param {number} p.timestamp   Unix timestamp in milliseconds
- * @param {string} apiSecret     Merchant apiSecret
- * @returns {string} Signature hex string
- */
-function signOrder({ merchantNo, outOrderNo, payAmount, timestamp }, apiSecret) {
-    const normalizedOutOrderNo = normalizeOutOrderNo(outOrderNo);
-    const normalizedPayAmount = normalizePayAmount(payAmount);
+function canonicalJson(value) {
+    if (value == null) return '';
+    if (Array.isArray(value)) return `[${value.map(canonicalJsonValue).join(',')}]`;
+    return canonicalJsonValue(value);
+}
+
+function canonicalJsonValue(value) {
+    if (value == null) return 'null';
+    if (Array.isArray(value)) return `[${value.map(canonicalJsonValue).join(',')}]`;
+    if (typeof value === 'object') {
+        return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${canonicalJsonValue(value[k])}`).join(',')}}`;
+    }
+    if (typeof value === 'number') {
+        if (!Number.isFinite(value)) throw new TypeError('attach contains a non-finite number');
+        return numberToPlainString(value);
+    }
+    return JSON.stringify(value);
+}
+
+function numberToPlainString(value) {
+    if (Object.is(value, -0) || value === 0) return '0';
+    const source = String(value);
+    if (!/[eE]/.test(source)) return source;
+    const sign = source.startsWith('-') ? '-' : '';
+    const unsigned = sign ? source.slice(1) : source;
+    const [coefficient, exponentText] = unsigned.toLowerCase().split('e');
+    const exponent = Number(exponentText);
+    const point = coefficient.indexOf('.');
+    const digits = coefficient.replace('.', '');
+    const integerLength = point < 0 ? coefficient.length : point;
+    const decimalPosition = integerLength + exponent;
+    if (decimalPosition <= 0) return `${sign}0.${'0'.repeat(-decimalPosition)}${digits}`;
+    if (decimalPosition >= digits.length) return `${sign}${digits}${'0'.repeat(decimalPosition - digits.length)}`;
+    return `${sign}${digits.slice(0, decimalPosition)}.${digits.slice(decimalPosition)}`;
+}
+
+function canonicalMethods(methods) {
+    if (!Array.isArray(methods) || methods.length === 0) return '';
+    const seen = new Set();
+    const values = [];
+    for (const method of methods) {
+        const networkId = text(method.networkId);
+        const rawAddress = text(method.contractAddress);
+        const address = rawAddress.startsWith('0x') ? rawAddress.toLowerCase() : rawAddress;
+        const value = `${networkId}|${address}`;
+        if (!seen.has(value)) { seen.add(value); values.push(value); }
+    }
+    return values.join(',');
+}
+
+function hmac(payload, apiSecret) {
+    return crypto.createHmac('sha256', apiSecret).update(payload, 'utf8').digest('hex');
+}
+
+function signCreateOrder(order, apiSecret) {
     const canonical = [
-        `merchantNo=${merchantNo}`,
-        `outOrderNo=${normalizedOutOrderNo}`,
-        `payAmount=${normalizedPayAmount}`,
-        `timestamp=${timestamp}`,
+        `merchantNo=${text(order.merchantNo)}`,
+        `outOrderNo=${text(order.outOrderNo)}`,
+        `productPrice=${decimal(order.productPrice)}`,
+        `productPriceCurrency=${text(order.productPriceCurrency)}`,
+        `productId=${text(order.productId)}`,
+        `attach=${canonicalJson(order.attach)}`,
+        `payAmount=${decimal(order.payAmount)}`,
+        `allowedPaymentMethods=${canonicalMethods(order.allowedPaymentMethods)}`,
+        `returnUrl=${text(order.returnUrl)}`,
+        `successRedirectUrl=${text(order.successRedirectUrl)}`,
+        `timestamp=${order.timestamp == null ? '' : order.timestamp}`,
     ].join('&');
-
-    return crypto.createHmac('sha256', apiSecret)
-        .update(canonical, 'utf8')
-        .digest('hex');
+    return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
-function normalizeOutOrderNo(value) {
-    const normalized = value == null ? '' : String(value).trim();
-    if (!normalized || normalized.length > 64) {
-        throw new TypeError('outOrderNo is required, must not be blank, and must be <= 64 characters');
-    }
-    return normalized;
+function signQuery(query, apiSecret) {
+    const fields = [`merchantNo=${text(query.merchantNo)}`];
+    if (text(query.orderNo)) fields.push(`orderNo=${text(query.orderNo)}`);
+    if (text(query.outOrderNo)) fields.push(`outOrderNo=${text(query.outOrderNo)}`);
+    fields.push(`timestamp=${query.timestamp}`);
+    const canonical = fields.join('&');
+    return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
-/**
- * Keep payAmount as a string. Converting through Number can lose precision or
- * emit scientific notation. Merchants use at most 2 decimal places; DSPay reserves
- * the remaining 4 stablecoin decimal places for its order suffix.
- */
-function normalizePayAmount(value) {
-    if (typeof value !== 'string') {
-        throw new TypeError('payAmount must be a plain decimal string');
-    }
-    const normalized = value.trim();
-    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(normalized)) {
-        throw new TypeError('payAmount must be a plain decimal string with at most 2 decimal places; scientific notation is not allowed');
-    }
-    if (!/[1-9]/.test(normalized)) {
-        throw new RangeError('payAmount must be greater than 0');
-    }
-    return normalized;
-}
-
-/**
- * Callback verification: HMAC-SHA256 over raw body, constant-time compare
- * against X-DSPay-Signature header.
- *
- * IMPORTANT: Must use the raw body string as-is. Do NOT JSON.parse then
- * JSON.stringify — field order or whitespace changes would alter the byte
- * sequence and break verification.
- *
- * @param {string} rawBody    Raw request body string
- * @param {string} signature  Value of X-DSPay-Signature header (case-insensitive)
- * @param {string} apiSecret  Merchant apiSecret
- * @returns {boolean}
- */
 function verifyCallback(rawBody, signature, apiSecret) {
-    if (!apiSecret || !rawBody || !signature) return false;
-
-    const expected = crypto.createHmac('sha256', apiSecret)
-        .update(rawBody, 'utf8')
-        .digest('hex');
-
-    const expectedBuf = Buffer.from(expected, 'utf8');
-    const sigBuf = Buffer.from(signature.toLowerCase(), 'utf8');
-    if (expectedBuf.length !== sigBuf.length) return false;
-    return crypto.timingSafeEqual(expectedBuf, sigBuf);
+    if (!rawBody || !signature || !apiSecret) return false;
+    const expected = Buffer.from(hmac(rawBody, apiSecret), 'utf8');
+    const actual = Buffer.from(String(signature).toLowerCase(), 'utf8');
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-module.exports = { signOrder, verifyCallback, normalizeOutOrderNo, normalizePayAmount };
+module.exports = { canonicalJson, canonicalMethods, signCreateOrder, signQuery, verifyCallback };

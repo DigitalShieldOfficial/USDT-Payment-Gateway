@@ -1,158 +1,86 @@
-## language
 [English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
-A mock merchant system for quickly experiencing the DSPay payment flow — merchant frontend initiates payment → merchant backend signs and builds the cashier URL → redirect to DSPay cashier → payment callback notification.
+This demo implements the merchant integration flow: the browser calls the merchant backend; the backend signs and calls DSPay create-order; only after receiving `checkoutUrl` does it redirect the customer. `apiSecret` and signed order fields are never exposed in the Checkout URL.
 
-## Project Structure
+## Tested runtimes
 
-```
-dspay-mock-merchant/
-├── back-end/                  # Mock merchant backend
-│   ├── java/                  # Java 11+ implementation (zero external dependencies)
-│   │   └── src/DspayMockMerchant.java
-│   ├── php/                   # PHP 5.6+ implementation (no Composer needed)
-│   │   ├── server.php
-│   │   └── start.sh
-│   └── nodejs/                # Node.js 18+ implementation (zero npm dependencies)
-│       └── src/
-│           ├── server.js
-│           └── signer.js
-└── front-end/                 # Mock merchant frontend (pure static HTML)
-    └── index.html
-```
+| Demo | Minimum | Tested versions | Dependencies |
+|------|---------|-----------------|--------------|
+| Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; `.nvmrc` included |
+| Java | JDK 11 | Microsoft OpenJDK `11.0.27`; Temurin `21.0.11` | No Maven/Gradle dependencies |
+| PHP | PHP 5.6 | PHP CLI `5.6.40` and `8.5.10` | No Composer dependency |
+| Frontend | A modern browser with `crypto.randomUUID()` | Chrome `151.0.7922.175` | One HTML file; no build step |
 
-## Integration Flow
+Tests were run on macOS `15.1` and Docker Linux. “Minimum” is the source compatibility baseline; “Tested versions” lists runtimes actually used to execute repository tests.
 
-```
-                                DSPay
-┌─────────────────────┐     ┌──────────────┐
-│ DSPay Merchant      │     │ DSPay Cashier │
-│ Portal              │     │              │
-│ ① Sign up           │     │ ④ User       │
-│ ② Get merchantNo    │     │   completes  │
-│    Generate apiSecret│     │   payment    │
-└────────┬────────────┘     └──────▲───────┘
-         │                         │
-    Provide merchantNo      ⑤ Async notification
-     + apiSecret             POST /notify
-         │                         │
-         ▼                         │
-┌──────────────────────────────────────────────┐
-│              Mock Merchant System             │
-│                                              │
-│  ┌─────────────┐         ┌──────────────┐   │
-│  │  Backend     │◄────────│   Frontend   │   │
-│  │  GET /create │  ③ Click│  index.html  │   │
-│  │  POST /notify│  Pay Now│              │   │
-│  │              │────────►│              │   │
-│  │              │ 302     │              │   │
-│  └──────────────┘ Redirect└──────────────┘   │
-│   Java, Node.js, or PHP                       │
-└──────────────────────────────────────────────┘
-```
-
-### Flow Description
-
-| Step | Description |
-|------|------|
-| ① | Go to [DSPay Merchant Portal](https://mcashier.ds.pro/login/) to sign up as a merchant |
-| ② | Get your `merchantNo` from the [Account page](https://mcashier.ds.pro/account) and your `apiSecret` (Payment Key) from the [Settings page](https://mcashier.ds.pro/settings) |
-| ③ | Replace the placeholders in the backend code with your `merchantNo` and `apiSecret`, start the backend, then click "Pay Now"; the backend signs locally and returns a 302 cashier redirect without calling the create-order API |
-| ④ | HTTP 302 redirects to the DSPay cashier, where the user completes payment |
-| ⑤ | DSPay sends an async callback to `POST /notify`, the backend verifies the signature and logs the payment result |
-
-## Quick Start
-
-### Prerequisites: Sign Up and Get Credentials
-
-1. Open the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) and sign up as a merchant
-2. Go to the [Account page](https://mcashier.ds.pro/account) and copy your **merchantNo**
-3. Go to the [Settings page](https://mcashier.ds.pro/settings) and get your **apiSecret** from the "Payment Key" section
-
-> :warning: `merchantNo` and `apiSecret` are sensitive credentials. Keep them secure.
-
-### Start the Backend (Choose a Language)
-
-The backend provides Java, Node.js, and PHP implementations with identical functionality. Choose whichever you prefer.
-
-#### Option A: Node.js (Recommended, Fastest Startup)
+Check local versions before running a demo:
 
 ```bash
-# 1. Navigate to the Node.js backend directory
-cd back-end/nodejs
+node --version && npm --version
+java -version && javac -version
+php --version
+```
 
-# 2. Set your merchant credentials (replace the placeholders)
-export MERCHANT_NO="your-merchantNo"
-export API_SECRET="your-apiSecret"
+Versions below the listed minimum are unsupported. The demos do not use frameworks such as Express, Spring Boot, or Laravel, so there are no framework-version requirements.
 
-# 3. Start the backend (listens on localhost:3000)
+All Node.js documentation and code use one baseline; multiple Node.js installations are not required:
+
+```bash
+cd Demo/back-end/nodejs
+nvm install
+nvm use
+npm test
+```
+
+## Run Node.js
+
+> `REPLACE_WITH_REAL_MERCHANT_NO`, `REPLACE_WITH_REAL_API_SECRET`, and `REPLACE_WITH_REAL_DSPAY_API_HOST` below are placeholders. Replace all of them before running. Obtain `merchantNo` and `apiSecret` from the DSPay Merchant Portal.
+
+```bash
+cd Demo/back-end/nodejs
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export PUBLIC_BASE_URL="http://localhost:3000"
 node src/server.js
 ```
 
-> Alternatively, directly edit lines 62-63 in `src/server.js`, replacing `change-me-to-your-merchantNo` and `change-me-to-your-apiSecret` with your actual values.
+Open `Demo/front-end/index.html` and click Pay Now. Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal.
 
-#### Option B: Java
+The frontend reuses one `outOrderNo` within the browser session so repeated create attempts exercise the idempotent create-order contract.
 
-```bash
-# 1. Navigate to the Java backend directory
-cd back-end/java
-
-# 2. Set merchant credentials and start (JDK 11+)
-java -DmerchantNo="your-merchantNo" -DapiSecret="your-apiSecret" DspayMockMerchant.java
-```
-
-> Alternatively, directly edit lines 47-50 in `src/DspayMockMerchant.java`, replacing the placeholders with your actual values.
-
-#### Option C: PHP (No Composer Required)
-
-The PHP demo includes all required source code, so Composer is not needed.
+## Run Java
 
 ```bash
-# 1. Navigate to the PHP backend directory
-cd back-end/php
-
-# 2. Set credentials and start (PHP 5.6+, listens on localhost:3000)
-MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" ./start.sh
+cd Demo/back-end/java
+java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
+  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
+  -DpublicBase="http://localhost:3000" src/DspayMockMerchant.java
 ```
 
-You can also run `php -S localhost:3000 server.php` directly. See the [PHP Demo README](back-end/php/README.md) for details.
+## Run PHP
 
-### Start the Frontend
+> Replace only the two `REPLACE_WITH_REAL_*` credential placeholders below. The production API and local redirect base are already populated. Do not copy Markdown link syntax into shell values.
 
-Open `front-end/index.html` directly in your browser. You will see the Nova Store mock product page.
+```bash
+cd Demo/back-end/php
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://wallet.ds.pro"
+export PUBLIC_BASE_URL="http://localhost:3000"
+./start.sh
+```
 
-### Make a Payment
+## Demo endpoints
 
-Click the **"Pay Now"** button on the frontend page:
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/create` | Create DSPay order server-to-server, then 302 to returned `checkoutUrl` |
+| GET | `/query?orderNo=...` | Node/PHP demo: signed authoritative order query |
+| POST | `/notify` | Verify webhook over the exact raw body |
+| GET | `/payment/return` | Timeout landing; Node/PHP demo queries DSPay |
+| GET | `/payment/success` | Success landing; Node/PHP demo queries DSPay |
 
-1. The frontend requests `GET http://localhost:3000/create` (with product parameters)
-2. The backend generates a signed order and returns an HTTP 302 redirect to the DSPay cashier
-3. Complete the payment on the cashier page
-4. DSPay sends an async callback to `POST http://localhost:3000/notify`, the backend verifies the signature and logs the result
-
-## API Reference
-
-### GET /create
-
-Create an order and redirect to the cashier.
-
-| Parameter | Required | Description |
-|------|------|------|
-| `payAmount` | No | Payment amount, default `0.01`; use a positive plain decimal string with at most 2 decimal places |
-| `productPrice` | No | Product price, default `0.01` |
-| `productPriceCurrency` | No | Currency, default `USD` |
-| `productId` | No | Product ID, default `NOVA-LIFETIME-001` |
-
-> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Use a plain decimal string, never a number or scientific notation. More than 2 decimal places returns [`50612`](../SDK/SDK.en-US.md#error-50612). See the [order-suffix mechanism](../SDK/SDK.en-US.md#order-suffix-mechanism-in-depth).
-
-Response: HTTP 302 redirect to the DSPay cashier (with signed parameters).
-
-### POST /notify
-
-Receives DSPay payment callbacks. The backend performs HMAC-SHA256 signature verification on the callback body using `apiSecret`, and logs the payment result upon successful verification.
-
-## Roadmap
-
-More language implementations (Python, Go, etc.) are planned for the `back-end/` directory. Contributions are welcome.
+In production, store the secret in KMS, add HTTP timeouts and bounded retries, reuse the same `outOrderNo` on retries, process webhooks idempotently, and fulfill only after a verified webhook or server-side query reports `COMPLETED`. A browser redirect is never proof of payment. Both URLs are optional: `returnUrl` is used only when the order times out, while `successRedirectUrl` is used only after completion. Checkout becomes unviewable 180 days after order creation and must not be used as a permanent order-details URL.

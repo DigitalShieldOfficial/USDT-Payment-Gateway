@@ -2,88 +2,30 @@
 
 # DSPay PHP Mock Merchant
 
-A directly runnable Digital Shield pay mock merchant backend. The required SDK source is included in `src/`, so Composer is not needed.
+PHP 5.6+, no Composer. The backend calls the DSPay create/query APIs and redirects to the `checkoutUrl` returned by the create response.
 
-## Requirements
+Runtime baseline: PHP 5.6 minimum; all syntax checks, create-signature tests, and callback-verification tests were run with PHP CLI `5.6.40` and `8.5.10`. Composer is not required; only standard PHP extensions are used. `hash_equals()` requires PHP 5.6+.
 
-- PHP 5.6+
-- PHP `hash` and `json` extensions (normally enabled by default)
-
-## Quick Start
+> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders and must be replaced. `DSPAY_BASE_URL` is prefilled with the DSPay production API; change it only when testing another environment.
 
 ```bash
 cd Demo/back-end/php
-
-MERCHANT_NO="your-merchantNo" \
-API_SECRET="your-apiSecret" \
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://wallet.ds.pro"
+export PUBLIC_BASE_URL="http://localhost:3000"
 ./start.sh
 ```
 
-The service listens on `http://localhost:3000` by default. Open `Demo/front-end/index.html` in a browser and click **Pay Now** to initiate a payment.
+- `GET /create`: call `POST /dspay/public/order/create`, then 302 to returned `checkoutUrl`
+- `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
+- `POST /notify`: verify `X-DSPay-Signature` over the exact raw body
+- timeout and success pages query DSPay; redirects are never proof of payment
 
-You can also start it without the script:
-
-```bash
-MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" \
-php -S localhost:3000 server.php
-```
-
-To use another port:
+Run local tests:
 
 ```bash
-PORT=4000 MERCHANT_NO="your-merchantNo" API_SECRET="your-apiSecret" ./start.sh
-```
-
-> `merchantNo` and `apiSecret` are sensitive. The demo only reads them from server-side environment variables and never accepts credentials from request parameters.
-
-## Endpoints
-
-### `GET /create`
-
-Creates a signed order and sends an HTTP 302 redirect to the DSPay cashier. The HTTP route generates a non-blank `outOrderNo` on the merchant backend before calling `Payment::createOrder()`. Query parameters `payAmount`, `productPrice`, `productPriceCurrency`, and `productId` are optional and use demo defaults when omitted.
-
-```bash
-curl -i 'http://localhost:3000/create?payAmount=0.01&productId=DEMO-001'
-```
-
-**Flow:**
-
-1. Generate a unique, non-blank `outOrderNo` of at most 64 characters on the merchant backend.
-2. Calculate HMAC-SHA256 in the fixed order `merchantNo → outOrderNo → payAmount → timestamp`.
-3. Include the same `outOrderNo` in both the canonical signature string and cashier URL.
-4. Return an HTTP 302 redirect to the cashier.
-
-> `outOrderNo` is required and case-sensitive: use `outOrderNo`, not `outOrderNO`. Direct calls to `Payment::createOrder()` must provide it explicitly. Missing, blank, or over-64-character values throw `RequestBuilderException`.
-
-> **`payAmount` precision:** Stablecoins are treated as 6-decimal tokens. Merchants submit at most 2 decimal places and DSPay uses the remaining 4 for its order suffix. `100`, `100.1`, and `100.12` are valid; `100.123` is invalid. Pass a positive plain decimal string; never use PHP `float` or scientific notation. More than 2 decimal places returns [`50612`](../../../SDK/SDK.en-US.md#error-50612).
-
-### `POST /notify`
-
-Receives a DSPay callback and verifies its HMAC-SHA256 signature using the raw request body and the `X-DSPay-Signature` header. A valid callback returns:
-
-```json
-{"code":"SUCCESS","msg":"ok"}
-```
-
-## Project Structure
-
-```text
-php/
-├── server.php              # HTTP routes: /create and /notify
-├── start.sh                # One-command startup script
-├── src/
-│   ├── bootstrap.php       # Local source loader; no Composer needed
-│   ├── Client.php
-│   ├── Payment.php
-│   ├── RequestBuilder.php
-│   └── RequestBuilderException.php
-└── test/                   # Standalone signing examples
-```
-
-Run the standalone examples with:
-
-```bash
-php test/CreateOrder.php
-php test/VerifyCallback.php
 php test/ValidateCreateOrder.php
+php test/VerifyCallback.php
+php test/ValidateHttpCreate.php  # skipped unless TEST_CREATE_URL is configured
 ```

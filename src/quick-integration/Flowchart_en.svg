@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="300" viewBox="0 0 1800 300">
+  <defs><style>.b{fill:#f1f3ff;stroke:#8c96ff;stroke-width:2}.t{font:600 20px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#18213b;text-anchor:middle}.s{font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#65708c;text-anchor:middle}.a{stroke:#58627c;stroke-width:3;fill:none;marker-end:url(#m)}</style><marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#58627c"/></marker></defs>
+  <rect width="1800" height="300" rx="24" fill="#fbfcff"/>
+  <g transform="translate(25 72)"><rect class="b" width="250" height="125" rx="16"/><text class="t" x="125" y="48">Configure merchant</text><text class="s" x="125" y="80">Addresses and API Key</text></g><path class="a" d="M285 135H335"/>
+  <g transform="translate(345 72)"><rect class="b" width="270" height="125" rx="16"/><text class="t" x="135" y="48">Create order server-side</text><text class="s" x="135" y="80">POST /public/order/create</text></g><path class="a" d="M625 135H675"/>
+  <g transform="translate(685 72)"><rect class="b" width="245" height="125" rx="16"/><text class="t" x="122" y="48">Redirect to Checkout</text><text class="s" x="122" y="80">checkoutUrl</text></g><path class="a" d="M940 135H990"/>
+  <g transform="translate(1000 72)"><rect class="b" width="260" height="125" rx="16"/><text class="t" x="130" y="48">Customer clicks Pay Now</text><text class="s" x="130" y="80">Lock method and address</text></g><path class="a" d="M1270 135H1320"/>
+  <g transform="translate(1330 72)"><rect class="b" width="210" height="125" rx="16"/><text class="t" x="105" y="48">On-chain payment</text><text class="s" x="105" y="80">DSPay detects transfer</text></g><path class="a" d="M1550 135H1600"/>
+  <g transform="translate(1610 72)"><rect class="b" width="165" height="125" rx="16"/><text class="t" x="82" y="43">COMPLETED</text><text class="s" x="82" y="76">Webhook + query</text></g>
+</svg>

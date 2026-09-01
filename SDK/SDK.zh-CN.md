@@ -36,20 +36,20 @@
 |------|------|
 | <a id="term-dspay"></a>**DSPay** | 多链稳定币收款网关（本服务） |
 | <a id="term-siwe"></a>**SIWE** | Sign-In with Ethereum，基于 EIP-4361 的钱包登录标准；商户用 EVM 钱包对约定消息签名完成登录认证 |
-| <a id="term-jwt"></a>**JWT** | JSON Web Token，[DSPay 后台](https://mcashier.ds.pro/login/)登录会话凭证（7 天滑动过期）；商户后端对接 API 不依赖 JWT，使用 `apiSecret` 签名（详见 [§2.2](#会话有效期)） |
-| <a id="term-apisecret"></a>**apiSecret** | 商户 API 密钥，用于生成收银台链接签名和回调验签，在 [DSPay 后台](https://mcashier.ds.pro/login/)获取，妥善保管 |
-| <a id="term-merchantno"></a>**merchantNo** | 商户业务编号（`DSM` 前缀，如 `DSM1`），生成收银台链接时必传；对外暴露的业务编码，**非 DB 自增主键**（避免业务量泄露 + 防枚举） |
+| <a id="term-apisecret"></a>**apiSecret** | 商户 API 密钥，用于签名创建/查询请求及验证回调，在 [DSPay 后台](https://mcashier.ds.pro/login/)获取，只能保存在商户服务端 |
+| <a id="term-merchantno"></a>**merchantNo** | 商户业务编号（`DSM` 前缀，如 `DSM1`），调用公共创建/查询接口时必传；对外暴露的业务编码，**非 DB 自增主键** |
+| **orderNo** | DSPay 创建订单后返回的订单唯一标识，用于查询、回调、对账和收银台页面寻址 |
+| **checkoutUrl** | 创建订单接口返回的完整收银台地址，格式为 `{payPageBaseUrl}/checkout/{orderNo}`；商户只负责跳转，不自行拼接业务参数 |
 | <a id="term-networkid"></a>**networkId** | 链的唯一标识（如 `evm--1` = Ethereum 主网），完整列表见 [§3.2](#networkid-速查表) |
-| <a id="term-contractaddress"></a>**contractAddress** | 代币合约地址，创建订单时与 `networkId` 一起定位代币 |
+| <a id="term-contractaddress"></a>**contractAddress** | 代币合约或 mint 地址；可与 `networkId` 组成 `allowedPaymentMethods` 项，限制用户在收银台可选的支付方式 |
 | <a id="term-hmac-sha256"></a>**HMAC-SHA256** | 哈希消息认证码算法；DSPay 用 `apiSecret` 作 key 对规范化字符串计算，输出 hex 小写 |
 | <a id="term-evm"></a>**EVM** | Ethereum Virtual Machine，以太坊虚拟机；EVM 系链指兼容以太坊智能合约的链（Ethereum / BSC / Polygon / Arbitrum / Base） |
 | <a id="term-usdt"></a>**USDT** / <a id="term-usdc"></a>**USDC** | 与美元锚定的稳定币（Tether USD / Centre USD Coin） |
 | **尾数（<a id="term-amountsuffix"></a>amountSuffix）** | DSPay 为区分同金额并发订单附加的小额尾数（如 100.001 中的 0.001）。稳定币按 6 位精度处理：商户金额最多使用前 2 位小数，后 4 位由 DSPay 生成尾数，详见 [§4.1](#订单尾数机制详解) |
 | **补单（<a id="term-supplement"></a>supplement）** | CLOSED 订单后续链上到账时，由商户在后台确认到账、订单重开为 COMPLETED 的操作 |
 | **回调（<a id="term-webhook"></a>webhook）** | DSPay 向商户 `notifyUrl` 发送的 HTTP POST 通知，事件类型：`CLOSED` / `COMPLETED` / `REFUNDED`；`CREATED` / `TIMEOUT` 仅推进订单状态，不发送回调 |
-| <a id="term-notifyurl"></a>**notifyUrl** | 商户接收 DSPay 回调通知的 URL（必须公网可达） |
+| <a id="term-notifyurl"></a>**notifyUrl** | 商户接收 DSPay 回调通知的公网可达地址；支持 `http://` 和 `https://`，生产环境建议 HTTPS |
 | <a id="term-ntp"></a>**NTP** | Network Time Protocol，网络时间协议；用于服务器时钟同步 |
-| <a id="term-nonce"></a>**nonce** | 一次性随机数；SIWE 登录流程中用于防重放攻击 |
 
 > 文档其他位置出现上述术语时，可点击跳转回此章节查看定义。
 
@@ -69,84 +69,75 @@
 | [DSPay](#term-dspay) 商户账号 | 在 [DSPay 后台](https://mcashier.ds.pro/login/)使用 [EVM](#term-evm) 钱包登录（参考 [§2.1](#商户注册与登录)） | 30 秒 |
 | 收款地址（任一链） | 在 [DSPay 后台](https://mcashier.ds.pro/login/)配置（参考 [§3.3](#配置收款地址)） | 1 分钟 |
 | [apiSecret](#term-apisecret) | 在 [DSPay 后台](https://mcashier.ds.pro/login/)启用回调后获取（参考 [§3.5](#配置回调-url-启用回调)） | — |
-| 测试用稳定币 | 钱包准备 0.01 [USDT](#term-usdt) | — |
+| 测试用稳定币 | 钱包至少准备 0.02 [USDT](#term-usdt)，并另备足够的链上 Gas 代币 | — |
 
 > ⚠️ 如果你还没有以上任一项，请先完成对应章节再回来。下面 Step 1 可以零依赖体验。
 
-### Step 1：3 分钟体验收银台
+### Step 1：准备商户配置
 
-以下 demo 使用【本地签名 + 收银台链接】方式：无需调用 [DSPay](#term-dspay) API，本地 HMAC-SHA256 签名后直接生成支付链接。用户打开链接后自行选择链/代币，收银台前端自动创建订单。
+在 DSPay 后台获取 `merchantNo` 和 `apiSecret`，并至少配置一个已启用的收款地址。`notifyUrl` 可稍后配置，但生产上线前必须完成。
 
+### Step 2：服务端预创建订单
 
-填入你的 `merchantNo` + `apiSecret`，保存为 `create-order.mjs`，运行 `node create-order.mjs`。
+填入你的 `merchantNo`、`apiSecret` 和 DSPay API 地址，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。
 
-**Node.js（Node 18+，零第三方依赖）**：
+> 执行前必须将下面的 `DSPAY_BASE_URL`、`MERCHANT_NO` 和 `API_SECRET` 替换为真实参数值。`merchantNo` 和 `apiSecret` 从 DSPay 商户后台获取；示例占位值不能直接用于请求。
 
 ```javascript
 import crypto from 'node:crypto';
 
-// ===== [1] 商户凭证（必须修改） =====
-const MERCHANT_NO = 'DSM1';
-const API_SECRET = '你的-apiSecret';  // 在商户后台获取
-
-// ===== [2] 签名字段（参与 HMAC 计算） =====
-const signed = {
-  // 稳定币默认 6 位精度：商户最多提交 2 位小数，后 4 位由 DSPay 生成尾数。
-  // 必须使用普通十进制字符串，不得使用科学计数法；违反限制返回 50612。
-  payAmount: '10.00',
-  outOrderNo: 'MY-ORDER-001',   // 必填：商户外部订单号，不能为空
-};
-
-// ===== [3] 展示参数（仅透传，不参与签名，可选） =====
-const display = {
-  productPrice: '9.99',
-  productPriceCurrency: 'USD',
-  productId: 'PROD-001',
-};
-
-// ================ 业务区（无需修改） ================
-
-// ① 拼规范化字符串（固定顺序：merchantNo / outOrderNo / payAmount / timestamp，顺序敏感）
+const DSPAY_BASE_URL = 'https://wallet.ds.pro'; // 替换为真实 DSPay API 地址
+const MERCHANT_NO = '请替换为真实merchantNo';   // 必须替换：商户后台中的 merchantNo
+const API_SECRET = '请替换为真实apiSecret';     // 必须替换：商户后台中的 apiSecret
+const outOrderNo = `ORDER-${Date.now()}`;
+const payAmount = '0.01';
 const timestamp = Date.now();
-const canonical = `merchantNo=${MERCHANT_NO}&outOrderNo=${signed.outOrderNo}&payAmount=${signed.payAmount}&timestamp=${timestamp}`;
 
-// ② HMAC-SHA256（secret 直接 getBytes，不 Base64 解码）
+// 创建签名采用固定字段顺序；可选字段未传时仍保留 key=。
+const canonical = [
+  `merchantNo=${MERCHANT_NO}`,
+  `outOrderNo=${outOrderNo}`,
+  'productPrice=',
+  'productPriceCurrency=',
+  'productId=',
+  'attach=',
+  `payAmount=${payAmount}`,
+  'allowedPaymentMethods=',
+  'returnUrl=',
+  'successRedirectUrl=',
+  `timestamp=${timestamp}`,
+].join('&');
+
 const signature = crypto.createHmac('sha256', API_SECRET)
-  .update(canonical, 'utf8').digest('hex');
+  .update(canonical, 'utf8')
+  .digest('hex');
 
-// ③ 拼接收银台 URL
-const url = new URL('https://cashier.ds.pro/');
-url.searchParams.set('merchantNo', MERCHANT_NO);
-url.searchParams.set('outOrderNo', signed.outOrderNo);
-url.searchParams.set('payAmount', signed.payAmount);
-url.searchParams.set('timestamp', String(timestamp));
-url.searchParams.set('signature', signature);
-// 展示参数（可选）
-if (display.productPrice) url.searchParams.set('productPrice', display.productPrice);
-if (display.productPriceCurrency) url.searchParams.set('productPriceCurrency', display.productPriceCurrency);
-if (display.productId) url.searchParams.set('productId', display.productId);
+const response = await fetch(`${DSPAY_BASE_URL}/dspay/public/order/create`, {
+  method: 'POST',
+  headers: {'content-type': 'application/json'},
+  body: JSON.stringify({
+    merchantNo: MERCHANT_NO,
+    outOrderNo,
+    payAmount,
+    timestamp,
+    signature,
+  }),
+});
 
-console.log('收银台链接:');
-console.log(url.toString());
-console.log('\n链接有效期 5 分钟，请在浏览器中打开。过期重新运行脚本即可。');
+const result = await response.json();
+if (result.code !== 0) {
+  throw new Error(result.message || result.header?.message || `DSPay error ${result.code}`);
+}
+
+console.log('orderNo:', result.data.orderNo);
+console.log('checkoutUrl:', result.data.checkoutUrl);
 ```
 
-**其他语言完整版**：Java（JDK 11+）见 [§4.8](#java-端到端-demo)，Node.js 含错误处理见 [§4.9](#node.js-端到端-demo)。
+### Step 3：跳转并完成支付
 
-### Step 3：看到效果 ✅
+商户将用户跳转到响应中的完整 `checkoutUrl`。用户在 DSPay 收银台选择网络和代币并点击 Pay Now 后，系统才锁定收款地址、最终金额和支付方式。
 
-预期输出（每次运行签名和时间戳不同，链接不同）：
-
-```
-收银台链接:
-https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&timestamp=1717689600000&signature=7de3fafc...
-
-链接有效期 5 分钟，请在浏览器中打开。过期重新运行脚本即可。
-```
-
-> 上述 URL 仅展示格式；`timestamp` 和 `signature` 是示例值，不能直接用于实际支付。请运行代码生成当前有效链接。
-
-在浏览器打开收银台链接，能看到支付页面，用户自行选择链/代币后扫码或转账即可完成支付。
+> 签名时间窗口为5分钟，只限制创建请求的新鲜度；订单从创建成功起按`expireAt`进入10分钟支付倒计时。
 
 ### 下一步
 
@@ -185,10 +176,10 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 
 | 步骤 | 阶段 | 说明 | 产出 |
 |:----:|------|------|------|
-| 1 | **注册商户** | [SIWE](#term-siwe) 钱包登录 | 商户 [JWT](#term-jwt) |
+| 1 | **注册商户** | [SIWE](#term-siwe) 钱包登录 | 商户账号 |
 | 2 | **配置收款** | 配置地址 + 回调 URL | ENABLED 地址 |
-| 3 | **创建订单** | HMAC-SHA256 签名后下单 | orderNo + 收款地址 |
-| 4 | **用户支付** | 钱包向收款地址转账 | 链上交易 |
+| 3 | **预创建订单** | 商户服务端签名调用公共创建接口 | `orderNo + checkoutUrl + expireAt` |
+| 4 | **用户支付** | 用户在托管收银台选币、Pay Now 后向商户地址转账 | 链上交易 |
 | 5 | **链上检测** | DSPay 轮询确认到账 | COMPLETED 状态 |
 | 6 | **回调商户** | POST 通知 + HMAC 验签 | 商户业务处理 |
 | 7 | **对账** | 查询订单列表与统计 | 财务核对 |
@@ -204,8 +195,21 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 - **[EVM](#term-evm) 钱包**：用于 [SIWE](#term-siwe) 登录（MetaMask / Rabby / Trust 等均可，只需能 `personal_sign`）
 - **公网可达的回调 URL**：用于接收 [DSPay](#term-dspay) 异步通知（本地开发可用 ngrok / cpolar）
 - **[NTP](#term-ntp) 时钟同步**：签名验证有 ±5 分钟时间窗口，服务器时钟必须准确
-- **JDK 11+、Node.js 18+ 或 PHP 5.6+**：运行对应语言 Demo（其他语言可按规范自行实现）
-- **测试用稳定币**：各链主网小额稳定币（如 0.01 [USDT](#term-usdt)）用于端到端联调
+- **JDK 11+、Node.js 18.20.8 或 PHP 5.6+**：运行对应语言 Demo（其他语言可按规范自行实现）
+- **测试用稳定币**：每条测试链的钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 原始金额及订单识别尾数；链上 Gas 代币需另行准备
+
+#### Demo 运行时版本
+
+以下版本已实际执行对应测试。复制示例时建议优先使用表中的已验证版本；“最低版本”表示源码使用的最低语言/API基线。
+
+| Demo | 最低版本 | 已验证版本 | 外部依赖 |
+|------|----------|------------|----------|
+| 文档内 Node.js 示例、Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 无 npm 依赖，仅使用 Node.js 内置模块 |
+| Java Demo、Java 验签示例 | JDK 11 | Microsoft OpenJDK `11.0.27`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
+| PHP Demo | PHP 5.6 | PHP `5.6.40`、`8.5.10` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
+| 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
+
+> Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 可直接使用 JDK 11 的单文件源码启动模式；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。
 
 ### 1.5 核心接入速查表
 
@@ -213,12 +217,24 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 
 | API | 方法 | 用途 |
 |---|---|---|
-| 打开收银台 | `https://cashier.ds.pro/?...` | 使用商户后端生成的签名链接进入收银台并创建订单 |
-| 接收回调 | 商户实现 webhook | 接收 [DSPay](#term-dspay) 的支付/关闭/退款通知 |
-| 主动查询订单 | POST /dspay/order/query | 未成功收到回调时查询订单状态（需 HMAC 签名） |
+| 查询支付方式白名单 | `GET /dspay/public/supported-chains` | 获取平台支持的网络和代币，无需签名 |
+| 预创建订单 | `POST /dspay/public/order/create` | 服务端签名创建订单，取得`orderNo`和完整`checkoutUrl` |
+| 主动查询订单 | `POST /dspay/public/order/query` | 未成功收到回调时查询权威订单状态和详情，需HMAC签名 |
+| 接收回调 | 商户实现 `notifyUrl` | 接收 [DSPay](#term-dspay) 的支付/关闭/退款通知 |
 
 > 其他操作（注册登录、配置收款地址、配置回调 URL、订单统计报表、退款、补单、密钥管理）均在 **[DSPay 后台](https://mcashier.ds.pro/login/) UI** 完成，无需调 API。
-> 用户收银台前端的订单状态轮询由 [DSPay](#term-dspay) 团队实现，商户无需自行开发。
+> 加载订单信息、确认支付方式和获取支付结果等收银台交互均由 [DSPay](#term-dspay) 完成，商户无需对接。
+
+### 1.6 公共接口统一响应
+
+```json
+{"code":0,"data":{},"header":{"resultCode":0}}
+```
+
+- 商户只根据顶层 `code` 判断业务结果：`code = 0` 成功，`code != 0` 失败。
+- `header.resultCode` 是与顶层 `code` 同值的兼容字段，无需读取或重复判断。
+- 业务数据位于 `data`；失败信息优先读取顶层 `message`，为空时再读取 `header.message`。
+- HTTP 200 只代表请求到达服务，不代表业务成功。
 
 ---
 
@@ -235,7 +251,7 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 商户在 [DSPay 后台](https://mcashier.ds.pro/login/)使用 [EVM](#term-evm) 钱包登录（[SIWE](#term-siwe) 签名认证）。**首次登录自动创建商户账号**，无需单独注册。
 
 登录后可获取：
-- **[merchantNo](#term-merchantno)**：商户业务编号（`DSM` 前缀，如 `DSM1`），生成收银台链接时必传
+- **[merchantNo](#term-merchantno)**：商户业务编号（`DSM` 前缀，如 `DSM1`），调用公共创建/查询接口时必传
 - **[apiSecret](#term-apisecret)**：API 密钥，用于收银台链接签名和回调验签（后台页面展示，妥善保管）
 
 <a id="会话有效期"></a>
@@ -243,7 +259,7 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 
 后台登录会话有效期 7 天（滑动过期：每次活跃自动续期 7 天）。闲置 7 天后需重新登录。
 
-> 商户后端生成收银台链接和进行回调验签时使用 [apiSecret](#term-apisecret) 签名，不依赖 [JWT](#term-jwt) 会话，不受此限制。
+> 商户后端调用创建/查询接口及进行回调验签时使用 [apiSecret](#term-apisecret)，不依赖后台登录会话，不受此限制。
 
 ### 2.3 ⚠️ 坑点（2 条）
 
@@ -269,44 +285,39 @@ https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&
 GET /dspay/public/supported-chains
 ```
 
-返回 [DSPay](#term-dspay) 平台支持的全部链和代币白名单（9 链 + 18 稳定币；全量不按商户过滤）。返回的 `networkId` + `address` 可直接用于创建订单的 `networkId` / `contractAddress` 参数。
+返回 [DSPay](#term-dspay) 平台支持的全部网络和代币白名单（全量、不按商户过滤）。返回的 `networkId` + `tokens[].address` 可用于创建订单的 `allowedPaymentMethods[].networkId` / `contractAddress`。
 
 **响应示例**：
 
 ```json
-[
-  {
+{
+  "code": 0,
+  "data": [{
     "networkId": "evm--1",
     "chainName": "Ethereum",
-    "chainLogo": "https://assets.ds.pro/server-service-indexer/evm--1/tokens/address--1721282106924.png",
-    "tokens": [
-      {
-        "symbol": "USDT",
-        "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
-        "logoUri": "https://ds-oss-prod.s3.ap-east-1.amazonaws.com/ds-oss-prod/1752200492611b1fe218f-73d8-40e4-a6ae-5a2fc52740a1.png"
-      },
-      {
-        "symbol": "USDC",
-        "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-        "logoUri": "https://ds-oss-prod.s3.ap-east-1.amazonaws.com/ds-oss-prod/1752200934488ce7052b9-831d-4954-8eaa-b76555b0cce8.png"
-      }
-    ]
-  }
-]
+    "chainLogoUrl": "https://assets.ds.pro/server-service-indexer/evm--1/tokens/address--1721282106924.png",
+    "tokens": [{
+      "symbol": "USDT",
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "logoUrl": "https://ds-oss-prod.s3.ap-east-1.amazonaws.com/ds-oss-prod/1752200492611b1fe218f-73d8-40e4-a6ae-5a2fc52740a1.png"
+    }]
+  }],
+  "header": {"resultCode": 0}
+}
 ```
 
 **字段说明**：
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `networkId` | string | 链 [networkId](#term-networkid)（如 `evm--1`），创建订单 `networkId` 参数用此值 |
-| `chainName` | string | 链显示名（如 `Ethereum`） |
-| `chainLogo` | string\|null | 链 logo URL，DB 未配置时为 null（前端可用默认图标兜底） |
-| `tokens[].symbol` | string | 代币符号（`USDT` / `USDC`） |
-| `tokens[].address` | string | 代币合约地址 / mint 地址，创建订单 `contractAddress` 参数用此值 |
-| `tokens[].logoUri` | string\|null | 代币 logo URL，DB 未配置时为 null |
+| 字段 | 类型 | 允许 null | 说明 |
+|------|------|-----------|------|
+| `networkId` | string | 否 | 链 [networkId](#term-networkid)（如 `evm--1`），创建订单 `allowedPaymentMethods[].networkId` 使用此值 |
+| `chainName` | string | 否 | 链显示名（如 `Ethereum`） |
+| `chainLogoUrl` | string | 是 | 链 Logo 的完整 URL；未配置时字段仍返回，值为 `null` |
+| `tokens[].symbol` | string | 否 | 代币符号（`USDT` / `USDC`） |
+| `tokens[].address` | string | 否 | 代币合约地址 / mint 地址，创建订单 `allowedPaymentMethods[].contractAddress` 使用此值 |
+| `tokens[].logoUrl` | string | 是 | 代币 Logo 的完整 URL；未配置时字段仍返回，值为 `null` |
 
-> 只展示 [USDT](#term-usdt)/[USDC](#term-usdc)，完整列表以接口实际返回为准。
+> 该接口只表示平台白名单。收银台最终可选列表为“平台支持列表、商户已启用收款地址、商户传入的 `allowedPaymentMethods`”三者的交集。商户传入限制时保留其数组顺序；未传时按收款地址创建时间排序。
 
 <a id="networkid-速查表"></a>
 ### 3.2 networkId 速查表
@@ -328,7 +339,7 @@ GET /dspay/public/supported-chains
 <a id="配置收款地址"></a>
 ### 3.3 配置收款地址
 
-商户只需为**要收款的链**配置 `ENABLED` 状态的收款地址；不收款的链无需配置。创建订单时若该 [networkId](#term-networkid) 下无 `ENABLED` 地址，会报 [`50609`](#error-50609) `NO_ENABLED_ADDRESS`。
+商户只需为**要收款的链**配置 `ENABLED` 状态的收款地址；不收款的链无需配置。预创建订单时暂不锁定网络、代币和地址；用户在收银台确认支付方式时，系统才从对应网络的已启用地址中分配并锁定收款地址。
 
 > 收款地址按**链级别**配置（不区分 token）：一个地址接收该链上所有 [DSPay](#term-dspay) 支持的稳定币（如 [USDT](#term-usdt) / [USDC](#term-usdc)）。
 
@@ -337,7 +348,7 @@ GET /dspay/public/supported-chains
 - **收款地址**
 - **启用状态**（ENABLED / DISABLED）
 
-> 创建订单时，[DSPay](#term-dspay) 会从该 [networkId](#term-networkid) 下 ENABLED 的地址中选一个作为收款地址。若没有 ENABLED 地址，创建订单报 [`50609`](#error-50609)。
+> 没有已启用收款地址的网络不会出现在该商户的可选支付方式中；若确认支付时已无可用地址，系统返回 `NO_ENABLED_ADDRESS`。
 
 > 地址管理（增删改查、启停）均在后台 UI 完成。
 
@@ -358,7 +369,7 @@ GET /dspay/public/supported-chains
 <a id="配置回调-url-启用回调"></a>
 ### 3.5 配置回调 URL + 启用回调
 
-在 [DSPay 后台](https://mcashier.ds.pro/login/)配置回调 URL（商户接收支付通知的 webhook 地址）并启用回调。
+在 [DSPay 后台](https://mcashier.ds.pro/login/)配置回调 URL（商户接收支付通知的 webhook 地址）并启用回调。当前支持 HTTP 和 HTTPS，生产环境建议使用 HTTPS。
 
 关键配置项：
 - **回调 URL**：商户的回调接收地址（必须公网可达）
@@ -384,7 +395,7 @@ GET /dspay/public/supported-chains
 2. **地址白名单 vs 商户 ENABLED 地址**：
    - 平台白名单（以 `GET /dspay/public/supported-chains` 返回为准）：定义"[DSPay](#term-dspay) 支持哪些链"
    - 商户级收款地址（在 [DSPay 后台](https://mcashier.ds.pro/login/)配置）：定义"本商户在每条链上用哪个地址收款"
-   创建订单时**两个条件都要满足**：[networkId](#term-networkid) 在白名单 + 商户有为该 [networkId](#term-networkid)（链）配 ENABLED 地址。
+   用户可选支付方式必须同时满足：[networkId](#term-networkid) 在平台白名单 + 商户在该网络配置了 ENABLED 地址 + 商户创建订单时允许该组合（如传入限制）。
 
 3. **回调开关默认关闭**：必须在 [DSPay 后台](https://mcashier.ds.pro/login/)手动启用回调，否则 [DSPay](#term-dspay) 永远不发回调。新商户登录后最容易遗漏这一步——创建订单成功、用户付款成功、但商户后端永远收不到通知。
 
@@ -397,213 +408,220 @@ GET /dspay/public/supported-chains
 <a id="第-4-章创建第一笔订单"></a>
 ## 第 4 章：创建第一笔订单
 
-本章介绍商户通过 **Hosted Cashier** 创建第一笔订单的完整流程，包括订单尾数机制、收银台 URL 参数、[HMAC-SHA256](#term-hmac-sha256) 签名、时间戳与金额精度，以及 Java/Node.js/PHP 示例。
+本章说明商户服务端预创建订单、请求签名、幂等处理和收银台跳转。商户只需调用公共接口并跳转到返回的 `checkoutUrl`；网络选择、支付方式锁定、二维码展示和状态轮询均由 DSPay 收银台完成。
 
 <a id="订单尾数机制详解"></a>
 ### 4.1 订单尾数机制详解
 
-**为什么商户传入 `payAmount=100`，收银台却显示 `100.001`？**
+DSPay 使用识别尾数区分相同网络、代币、收款地址和原始金额的并发订单。例如商户创建金额为 `100.00` 的订单，用户确认支付方式后，最终应付金额可能为 `100.001`。
 
-[DSPay](#term-dspay) 用**尾数机制**区分同金额的并发订单。例如多个商品都是 100 [USDT](#term-usdt) 的订单，[DSPay](#term-dspay) 会为每个订单附加一个唯一尾数（如 100.001 / 100.002 / 100.003），用户付款时金额精确到尾数，[DSPay](#term-dspay) 据此自动匹配订单。
-
-
-**关键点**：
-- 收银台链接中的 `payAmount` 是商户期望金额；收银台展示、回调和主动查询结果中的 `payAmount` 是 [DSPay](#term-dspay) 生成的含尾数金额
-- 用户必须按收银台显示的 `payAmount`（含尾数）付款，否则链上检测不匹配
-
-**输入精度限制**：
-
-[DSPay](#term-dspay) 对接入的稳定币统一按 **6 位小数精度**处理，其中商户金额最多使用前 **2 位小数**，后 **4 位小数**由 DSPay 用于生成订单识别尾数。
-
-- `payAmount` 必须大于 0，且最多 2 位小数：`100`、`100.1`、`100.12` 合法，`100.123` 不合法
-- 必须使用普通十进制字符串，不能使用科学计数法，也不要先转换为浮点数
-- 建议避免无意义尾随零，传 `100.1` 即可，无需传 `100.10`
-- 超过 2 位小数时，收银台创建订单失败并返回 [`50612`](#error-50612)
+- `originPayAmount`：创建订单时提交的原始应付金额。
+- `amountSuffix`：用户确认支付方式时分配的识别尾数。
+- `payAmount = originPayAmount + amountSuffix`：收银台最终展示和链上检测使用的金额。
+- 创建订单响应只返回 `originPayAmount`；最终金额、收款地址和支付方式在用户点击 Pay Now 后才锁定。
+- 用户必须按收银台展示的最终金额精确付款。
 
 <a id="收银台接入流程"></a>
-### 4.2 收银台接入流程
+### 4.2 标准接入流程
 
-商户不需要选择具体链或代币，也不需要直接请求订单创建接口。标准接入流程如下：
+1. 商户后端可调用 `GET /dspay/public/supported-chains` 获取平台支持的网络和代币。
+2. 商户后端生成唯一 `outOrderNo`，按固定字段顺序签名。
+3. 商户后端调用 `POST /dspay/public/order/create`。
+4. DSPay 立即创建状态为 `CREATED` 的订单，返回 `orderNo`、`checkoutUrl` 和支付截止时间。
+5. 商户将用户跳转到 `checkoutUrl`。
+6. 用户在 DSPay 收银台选择网络和代币并确认支付；DSPay 锁定支付方式、收款地址、识别尾数和最终应付金额。
+7. 用户按收银台展示信息发起链上转账。
+8. DSPay 检测到账后更新订单并通过 `notifyUrl` 通知商户；商户也可调用公共查询接口兜底确认。
 
-1. 商户后端准备 `merchantNo`、唯一的 `outOrderNo`、`payAmount` 和当前 `timestamp`
-2. 商户后端使用 `apiSecret` 计算 [HMAC-SHA256](#term-hmac-sha256) 签名
-3. 将必填字段、签名和可选商品字段进行 URL 编码，拼接到 `https://cashier.ds.pro/`
-4. 返回 HTTP 302，或将生成的收银台链接返回给商户前端
-5. 用户打开收银台，自行选择链和稳定币；收银台完成订单创建并展示含尾数的实际应付金额
+> 签名 5 分钟有效期只限制创建请求的提交时间。订单 10 分钟支付倒计时从订单创建开始，用户尚未确认支付方式也会正常超时。
+### 4.3 创建订单接口
 
-> `apiSecret` 只能保存在商户后端，禁止发送到浏览器、移动端或写入收银台 URL。
-
-**前置条件**：
-
-- 商户已在 [DSPay 后台](https://mcashier.ds.pro/login/)获取 `merchantNo` 和 `apiSecret`
-- 至少配置一条 `ENABLED` 收款地址
-- 商户服务器已启用 [NTP](#term-ntp) 时钟同步
-
-<a id="生成收银台链接"></a>
-### 4.3 生成收银台链接
-
-收银台基础地址：
-
-```text
-https://cashier.ds.pro/
+```http
+POST /dspay/public/order/create
+Content-Type: application/json
 ```
 
-签名完成后，将参数按 URL 查询参数编码：
+#### 4.3.1 请求
+
+| 字段 | 类型 | 必填 | 签名 | 说明 |
+|---|---|---:|---:|---|
+| `merchantNo` | string | 是 | 是 | DSPay 商户编号；不能为空，字符串长度最多 32 个字符 |
+| `outOrderNo` | string | 是 | 是 | 商户订单号；不能为空，字符串长度最多 64 个字符；同一商户下唯一，也是幂等键 |
+| `productPrice` | decimal | 否 | 是 | 商品法币价格；整数部分最多 14 位，小数部分最多 6 位 |
+| `productPriceCurrency` | string | 否 | 是 | 商品价格币种；字符串长度最多 16 个字符 |
+| `productId` | string | 否 | 是 | 商户产品 ID；字符串长度最多 64 个字符 |
+| `attach` | object | 否 | 是 | 附加 JSON 对象；规范化 JSON 的 UTF-8 编码长度最多 4096 字节，嵌套深度最多 3 层 |
+| `payAmount` | decimal | 是 | 是 | 原始应付代币金额；最小值 `0.0000000001`，整数部分最多 12 位，小数部分最多 18 位 |
+| `allowedPaymentMethods` | array | 否 | 是 | 限制用户可选组合；数组最多 50 项；不传或传空数组表示不额外限制 |
+| `returnUrl` | string | 否 | 是 | 可选；订单进入 `TIMEOUT` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。未传时按空字符串参与签名，保留 `returnUrl=` |
+| `successRedirectUrl` | string | 否 | 是 | 可选；仅订单进入 `COMPLETED` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。未传时按空字符串参与签名，保留 `successRedirectUrl=`；未配置时停留 DSPay 成功页 |
+| `timestamp` | long | 是 | 是 | Unix 毫秒时间戳；与 DSPay 服务端当前时间的差值绝对值不得超过 300000 毫秒（5 分钟） |
+| `signature` | string | 是 | 否 | HMAC-SHA256 小写十六进制字符串，固定 64 个字符；字段本身不参与签名 |
+
+`allowedPaymentMethods[]` 每项必须包含非空的 `networkId` 和 `contractAddress`：`networkId` 字符串长度最多 64 个字符，`contractAddress` 字符串长度最多 128 个字符；两者必须组成 `supported-chains` 返回的有效支付方式。最终列表为：
 
 ```text
-https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=99.99&timestamp=1717689600000&signature=7de3fafc...
+平台支持列表 ∩ 商户已启用收款地址 ∩ allowedPaymentMethods
 ```
 
-> 示例中的 `timestamp` 和 `signature` 仅用于展示格式。实际链接必须由商户后端实时生成，有效期为 5 分钟。
+传入时按商户顺序展示；不传时按收款地址创建时间排序。
 
-#### 收银台 URL 参数
+```json
+{
+  "merchantNo": "DSM2080260022215368706",
+  "outOrderNo": "ORDER-20260821-001",
+  "productPrice": "100.00",
+  "productPriceCurrency": "USD",
+  "productId": "PROD-001",
+  "attach": {"customerId":"CUST-1001","source":"web"},
+  "payAmount": "100.00",
+  "allowedPaymentMethods": [{
+    "networkId": "evm--56",
+    "contractAddress": "0x55d398326f99059ff775485246999027b3197955"
+  }],
+  "returnUrl": "https://merchant.example.com/orders/ORDER-20260821-001",
+  "successRedirectUrl": "https://merchant.example.com/pay/success",
+  "timestamp": 1787292000000,
+  "signature": "a1b2c3d4..."
+}
+```
 
-| 字段 | 必填 | 约束 | 说明 |
-|------|------|------|------|
-| `merchantNo` | ✓ | 非空 | 商户编号；只能由商户后端配置 |
-| `outOrderNo` | ✓ | 非空，≤64 字符 | 商户外部订单号；参与签名，字段名区分大小写，必须写作 `outOrderNo`；每笔业务订单使用唯一值 |
-| `payAmount` | ✓ | 大于 0，最多 2 位小数 | 不含尾数的稳定币金额；必须是普通十进制字符串，禁止科学计数法 |
-| `timestamp` | ✓ | 当前时间 ±5 分钟 | Unix 毫秒时间戳，防止链接重放 |
-| `signature` | ✓ | HMAC-SHA256 hex 小写 | 按 [§4.4](#签名规范化字符串) 计算 |
-| `productPrice` | ✗ | 可选 | 商品价格，仅用于记录和展示 |
-| `productPriceCurrency` | ✗ | 可选 | 商品价格币种，如 `USD` / `CNY` / `EUR` |
-| `productId` | ✗ | ≤64 字符 | 商户产品 ID，回调时原样返回 |
+金额建议使用十进制字符串，禁止科学计数法和二进制浮点运算。
 
-`networkId` 和 `contractAddress` 不需要由商户传入。用户进入收银台后选择链和代币，收银台根据商户已配置的收款地址完成订单创建。
+#### 4.3.2 响应
 
-#### 打开链接后
+| 字段 | 必返 | 说明 |
+|---|---:|---|
+| `orderNo` | 是 | DSPay 订单号；用于查询、回调、对账和收银台寻址 |
+| `outOrderNo` | 是 | 商户订单号 |
+| `checkoutUrl` | 是 | 完整地址：`{payPageBaseUrl}/checkout/{orderNo}` |
+| `status` | 是 | 创建成功固定 `CREATED` |
+| `originPayAmount` | 是 | 原始金额，不含识别尾数 |
+| `createAt` | 是 | 创建时间，Unix 毫秒 |
+| `expireAt` | 是 | 支付截止时间，`createAt + 10 分钟` |
 
-- 收银台校验 `timestamp` 和 `signature`
-- 用户选择链和稳定币
-- 收银台创建订单并展示收款地址、二维码、过期时间和**含尾数的实际应付金额**
-- 商户通过第 5 章的回调接收订单状态；未成功收到回调时，使用 [§5.11](#商户主动查询订单回调兜底) 主动查询
+```json
+{
+  "code": 0,
+  "data": {
+    "orderNo": "1949695024925671424",
+    "outOrderNo": "ORDER-20260821-001",
+    "checkoutUrl": "https://cashier.ds.pro/checkout/1949695024925671424",
+    "status": "CREATED",
+    "originPayAmount": "100.00",
+    "createAt": 1787292001000,
+    "expireAt": 1787292601000
+  },
+  "header": {"resultCode": 0}
+}
+```
 
-商户不需要解析收银台内部创建订单的响应，也不要在商户前端自行拼接签名。Java、Node.js 和 PHP 的完整实现分别见 [§4.8](#java-端到端-demo)、[§4.9](#node.js-端到端-demo) 和 [PHP Demo](../Demo/back-end/php/README.zh-CN.md)。
+创建响应不返回网络、代币、最终金额、收款地址或二维码。这些数据在 Pay Now 后才会锁定，二维码由收银台前端生成。
 
 <a id="签名规范化字符串"></a>
-### 4.4 签名规范化字符串
+### 4.4 签名和幂等
 
-将收银台签名参数按**固定顺序**用 `key=value&` 风格拼接。计算签名时 value 不做 URL 编码；签名完成后再编码为收银台 URL 查询参数。签名集固定为 4 段：
+#### 4.4.1 创建签名
 
+固定字段顺序：
+
+```text
+merchantNo -> outOrderNo -> productPrice -> productPriceCurrency -> productId
+-> attach -> payAmount -> allowedPaymentMethods -> returnUrl
+-> successRedirectUrl -> timestamp
 ```
-merchantNo={merchantNo}&outOrderNo={outOrderNo}&payAmount={payAmount}&timestamp={timestamp}
+
+可选字段未传时仍保留 `key=`。
+
+```text
+merchantNo=DSM2080260022215368706&outOrderNo=ORDER-20260821-001&productPrice=100.00&productPriceCurrency=USD&productId=PROD-001&attach={"customerId":"CUST-1001","source":"web"}&payAmount=100.00&allowedPaymentMethods=evm--56|0x55d398326f99059ff775485246999027b3197955&returnUrl=https://merchant.example.com/orders/ORDER-20260821-001&successRedirectUrl=https://merchant.example.com/pay/success&timestamp=1787292000000
 ```
 
-**示例**：
+```text
+signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 ```
-merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=99.99&timestamp=1717689600000
-```
 
-> ⚠️ **顺序敏感**
->
-> HMAC-SHA256 是对**字节序列**求哈希，字段顺序错乱 → 字节序列不同 → 哈希不同 → 验签失败（[`50613`](#error-50613)）。**商户后端必须严格按上述顺序拼接**。
->
-> | 位置 | 字段 | 空值处理 |
-> |---|---|---|
-> | 1 | `merchantNo` | 非空，直接拼 |
-> | 2 | `outOrderNo` | 必填且非空，直接拼接；字段名区分大小写 |
-> | 3 | `payAmount` | `BigDecimal.toPlainString()`，禁用科学计数法 |
-> | 4 | `timestamp` | 毫秒 long，直接拼 |
->
-> 签名使用 URL 编码前的原始字段值；不要对整个 URL 或 URL 编码后的 `%xx` 字符串计算签名。
+规范化：
 
-> **重要**：
-> - `outOrderNo` 必填且不能为空，必须同时参与签名并出现在收银台 URL 中。字段名区分大小写，必须写作 `outOrderNo`，不是 `outOrderNO`。
-> - `merchantNo` / `outOrderNo` / `payAmount` / `timestamp` 四字段构成最小签名集（防冒充、防商户订单号被替换、防篡改链上金额、防重放）。
-> - `productPrice` / `productPriceCurrency` / `productId` 是可选展示字段，不参与签名；商户如需保证其完整性，应在回调验签后与本地订单数据比对。
-> - 链和代币由用户在收银台选择，不需要商户传入或签名 `networkId` / `contractAddress`。
+- 字符串 trim；空可选字段使用空字符串。
+- decimal 使用普通十进制形式。
+- `attach` 对象键递归按字典序排列，去除多余空白；数字去除无意义尾零，`-0` 转为 `0`。
+- `allowedPaymentMethods` 保留商户顺序并去重，每项拼为 `networkId|contractAddress`，再用逗号连接；`0x` 地址转小写。
 
-### 4.5 签名算法
+`attach` 不可包含密码、私钥、证件或银行卡等敏感信息。
 
-[HMAC-SHA256](#term-hmac-sha256)，输出 **hex 小写**（与回调签名一致）。
+#### 4.4.2 创建幂等
 
-> **重要**：`apiSecret` 字符串**直接作为 HMAC key 使用**，`secret.getBytes(UTF_8)`，**不要先 Base64 解码**。Base64Url 只是密钥的存储编码，[HMAC-SHA256](#term-hmac-sha256) 对 key 字节序列没有格式要求。
+`merchantNo + outOrderNo` 是唯一幂等键：
 
-<a id="时间戳窗口"></a>
-### 4.6 时间戳窗口
+- 重复请求且业务字段一致：返回首次创建的同一 `orderNo/checkoutUrl/expireAt`，不延长订单时间。
+- 幂等键相同但业务字段不同：返回错误码`40901`，错误信息“商户订单号已被使用”（`Merchant order number has already been used`）。
+- 商户代码重试时必须复用原 `outOrderNo`。
 
-`timestamp`（毫秒）必须在 [DSPay](#term-dspay) 服务端当前时间 **±5 分钟**内，否则收银台拒绝该链接并返回 [`50614`](#error-50614) `ORDER_TIMESTAMP_EXPIRED`。建议商户服务器开启 [NTP](#term-ntp) 时钟同步。
+### 4.5 收银台行为和跳转
 
-### 4.7 金额字符串序列化
+只使用创建响应的 `checkoutUrl`；不要自行拼接业务参数。
 
-签名字段 `payAmount` 必须用**纯数字字符串**（无科学计数法）：
+- Pay Now 前订单已是 `CREATED`，但支付方式尚未锁定。
+- Pay Now 首次成功后不能返回重新选币。
+- 多窗口访问同一链接时，第一次 Pay Now 胜出；后续请求返回同一支付数据。
+- Pay Now 不延长订单 10 分钟支付时间。
+- 订单超时/关闭后不能通过旧链接重启。
+- 订单创建满180天后，收银台链接不再允许查看；该限制不修改订单状态。
 
-| 语言 | 方法 |
-|------|------|
-| Java | 从字符串构造 `BigDecimal`，输出时使用 `toPlainString()` |
-| Node.js | 保留原始字符串并校验最多 2 位小数；不要转为 `number` / `toFixed()` |
-| PHP | 始终将 `payAmount` 保持为字符串，`trim()` 后直接使用；不要转换为 `float`。使用 `preg_match()` 校验正数普通十进制格式和最多 2 位小数，参考 [PHP Demo](../Demo/back-end/php/README.zh-CN.md) |
+| 状态 | 跳转规则 |
+|---|---|
+| `COMPLETED` 且配置 `successRedirectUrl` | 跳转 `successRedirectUrl` |
+| `COMPLETED` 但未配置 | 停留成功页，不跳转，不使用 `returnUrl` 兜底 |
+| 订单 `TIMEOUT`，且配置 `returnUrl` | 跳转 `returnUrl` |
+| 订单 `TIMEOUT`，但未配置 `returnUrl` | 停留 DSPay 超时页面，不跳转 |
+| 其他情况 | 不使用 `returnUrl` 自动跳转 |
 
-> 否则 `1e2` 与 `100` 的签名字节不同，会导致验签失败（[`50613`](#error-50613)）。
-
+跳转不是支付凭据。商户页面接收用户后，必须由商户服务端调用查询接口确认状态。
 <a id="java-端到端-demo"></a>
-### 4.8 Java 端到端 demo
+### 4.6 Java 端到端 Demo
 
-Java 可运行 Demo 统一维护在 [`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)，SDK 不再复制源码，避免两份代码不一致。
-
-**Hosted Cashier 标准流程**：
-
-1. 本地生成 `outOrderNo` 和 `timestamp`
-2. 本地按 `merchantNo → outOrderNo → payAmount → timestamp` 签名
-3. 对签名字段和可选商品字段做 URL 编码，拼接收银台 URL
-4. 返回 HTTP 302 跳转收银台，由用户选择链和代币并完成订单创建
-
-> `outOrderNo` 必须非空，并同时用于签名和收银台 URL；建议每个商户订单使用唯一值。
-
-唯一源码：
+Java 可运行 Demo 统一维护在 [`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。Demo 会在商户服务端构造完整请求、规范化全部签名字段、调用公共创建接口、检查顶层 `code`，再将浏览器跳转到响应中的 `checkoutUrl`；同时演示 Raw Body 回调验签和公共查询兜底。
 
 - [Java Demo 使用说明](../Demo/back-end/java/README.zh-CN.md)
 - [可运行源码 `DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
 - [启动脚本](../Demo/back-end/java/start.sh) / [停止脚本](../Demo/back-end/java/stop.sh)
 
 <a id="node.js-端到端-demo"></a>
-### 4.9 Node.js 端到端 demo
+### 4.7 Node.js / PHP Demo
 
-Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.zh-CN.md)，SDK 不再复制源码，避免两份代码不一致。
-
-**Hosted Cashier 标准流程**：
-
-1. 本地生成 `outOrderNo` 和 `timestamp`
-2. 本地按 `merchantNo → outOrderNo → payAmount → timestamp` 签名
-3. 使用 `URLSearchParams` 拼接收银台 URL
-4. 返回 HTTP 302 跳转收银台，由用户选择链和代币并完成订单创建
-
-> `outOrderNo` 必须非空，并同时用于签名和收银台 URL；建议每个商户订单使用唯一值。
-
-唯一源码：
+Node.js 和 PHP Demo 遵循同一预下单流程：服务端签名、调用 `POST /dspay/public/order/create`、跳转 `checkoutUrl`、验证回调、主动查询。
 
 - [Node.js Demo 使用说明](../Demo/back-end/nodejs/README.zh-CN.md)
-- [HTTP 服务与收银台 URL 构建 `server.js`](../Demo/back-end/nodejs/src/server.js)
-- [签名与回调验签 `signer.js`](../Demo/back-end/nodejs/src/signer.js)
-- [启动配置 `package.json`](../Demo/back-end/nodejs/package.json)
+- [Node.js 服务端 `server.js`](../Demo/back-end/nodejs/src/server.js)
+- [Node.js 签名与验签 `signer.js`](../Demo/back-end/nodejs/src/signer.js)
+- [PHP Demo 使用说明](../Demo/back-end/php/README.zh-CN.md)
 
-### 4.10 验签失败排查表
+### 4.8 创建失败排查表
 
 | 错误码 | 原因 | 排查方向 |
-|--------|------|----------|
-| [`50613`](#error-50613) `ORDER_SIGNATURE_INVALID` | 商户未配置 [apiSecret](#term-apisecret) | 先在 [DSPay 后台](https://mcashier.ds.pro/login/)启用回调（自动生成 [apiSecret](#term-apisecret)）或在后台执行 regenerate |
-| [`50613`](#error-50613) `ORDER_SIGNATURE_INVALID` | 签名计算错误 | 检查规范化字符串字段顺序、金额字符串序列化、[apiSecret](#term-apisecret) 正确性 |
-| [`50614`](#error-50614) `ORDER_TIMESTAMP_EXPIRED` | 时间戳超出 ±5 分钟 | 检查服务器时间是否同步（[NTP](#term-ntp)） |
+|---|---|---|
+| `40001` | 参数校验失败 | 检查字段长度、金额格式、URL 和支付方式数组 |
+| `40901` | 商户订单号已被使用 | 检查是否复用 `outOrderNo` 且业务字段发生变化 |
+| `50501` | 商户不存在 | 检查 `merchantNo` |
+| `50503` | apiSecret 已冻结 | 在 DSPay 后台检查密钥状态 |
+| `50609` | 无可用收款地址 | 为对应网络配置已启用收款地址 |
+| `50613` | 请求签名无效 | 检查字段顺序、空字段、JSON/数组规范化和密钥 |
+| `50614` | 请求时间戳过期 | 检查服务器 NTP；时间差绝对值不得超过 5 分钟 |
 
-### 4.11 ⚠️ 坑点（5 条）
+### 4.9 ⚠️ 坑点
 
-1. **BigDecimal 必须 `toPlainString()`**：`new BigDecimal("1E+2").toString()` 输出 `1E+2`，`toPlainString()` 输出 `100`。规范化字符串不一致 → [`50613`](#error-50613)。`payAmount` 参与签名，Java 代码中必须使用普通十进制字符串。
-
-2. **Node.js 金额字段必须用字符串**：`payAmount` 用字符串字面量 `'99.99'` 或 Big.js，不能用 JS number。JS number 超过 `Number.MAX_SAFE_INTEGER` 或极小 decimal 会进入科学计数法，导致规范化字符串不一致。
-
-3. **timestamp ±5 分钟窗口**：服务器必须开 [NTP](#term-ntp) 同步。超窗口 → [`50614`](#error-50614)。Docker 容器尤其注意时钟是否与宿主机同步。
-
-4. **订单尾数机制与精度约定**：收银台最终显示的 `payAmount` 含尾数（如 100.001），**不是**商户链接中的 100。稳定币统一按 6 位精度处理：商户最多提交 2 位小数，后 4 位由 [DSPay](#term-dspay) 生成尾数。超过 2 位小数时返回 [`50612`](#error-50612)。用户必须按收银台显示的金额付款；商户对账以回调或主动查询结果为准。
-
-5. **签名字段集 + 顺序敏感**：签名规范化字符串必须严格按 `merchantNo → outOrderNo → payAmount → timestamp` 顺序拼接。HMAC-SHA256 对字节序列求哈希，**字段顺序错乱 → 验签失败（[`50613`](#error-50613)）**。`outOrderNo` 必填且不能为空，必须参与签名并出现在收银台 URL 中。`productPrice` / `productPriceCurrency` / `productId` 可放入收银台 URL，但不参与签名；链和代币由用户在收银台选择。商户必须自行保证 `outOrderNo` 唯一。
-
-> **安全提示**：`productPrice` / `productPriceCurrency` / `productId` 移出签名集后可被中间人篡改，但 `payAmount` 仍签名（链上资金安全有保障），篡改仅影响商户法币统计/对账。如需法币侧完整性，建议在回调验签后额外比对这三个字段。
+1. **所有创建业务字段都参与签名**：包括 `productId`、`attach`、支付方式限制和两个跳转 URL；可选字段未传也保留空 key。
+2. **金额不要使用浮点数**：Java 使用字符串构造的 `BigDecimal` 和 `toPlainString()`；Node.js/PHP 保留原十进制字符串。
+3. **签名时间窗不是订单有效期**：5 分钟只控制请求防重放；订单从创建开始有独立 10 分钟支付期。
+4. **创建成功不代表已锁定支付方式**：链上检测和补单只处理已锁定支付方式的订单。
+5. **幂等重试不能改变业务字段**：否则返回 `40901`，不会覆盖已有订单。
+6. **不要根据页面跳转发货**：只信任验签通过的 `COMPLETED` 回调，或商户服务端查询到的 `COMPLETED`。
 
 ---
 
 [↑ 返回目录](#目录)
 
-<a id="第-5-章接收回调"></a>
 ## 第 5 章：接收回调
 
 本章说明回调处理机制，包括**订单状态机**、**回调验签四步法**、防重放、幂等设计、严格响应规范、重试策略，以及未收到回调时的签名主动查询接口。
@@ -624,8 +642,8 @@ Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end
 
 | 状态 | 含义 | 是否发回调 | 自动检测 | 可手动补单 |
 |------|------|-----------|---------|-----------|
-| `CREATED` | 待支付（10min 倒计时） | ❌ 不发送 | ✅ 扫描 | ✅ |
-| `TIMEOUT` | 10min 未支付（仍可继续等） | ❌ 不发送 | ✅ 扫描 | ✅ |
+| `CREATED` | 订单已创建；可能尚未确认支付方式，也可能已锁定 | ❌ 不发送 | 支付字段完整时扫描 | 支付字段完整时允许 |
+| `TIMEOUT` | 创建后 10min 未完成支付（仍可继续等待到账） | ❌ 不发送 | 支付字段完整时扫描 | 支付字段完整时允许 |
 | `CLOSED` | 40min 未支付，系统关闭 | ✅ 发 `CLOSED` | ❌ **停止** | ✅（重开，`reopened=true`） |
 | `COMPLETED` | 链上到账 / 补单完成 | ✅ 发 `COMPLETED` | — | — |
 | `REFUNDED` | 商户退款成功 | ✅ 发 `REFUNDED` | — | — |
@@ -635,7 +653,7 @@ Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end
 **三个关键行为（容易被忽略）**：
 
 1. **TIMEOUT 不发回调**：10 分钟未付只推进订单状态，订单仍继续等待链上到账并接受自动检测。订单最终走向 CLOSED（40min）或 COMPLETED（链上到账/补单）。商户不要依赖回调感知 TIMEOUT。
-2. **CLOSED 后链上自动检测停止**：[DSPay](#term-dspay) 自动检测任务 仅扫描 `CREATED` / `TIMEOUT` 状态订单。订单一旦进入 `CLOSED`，即使后续链上真的到账，[DSPay](#term-dspay) 也不会自动确认——**必须在 [DSPay 后台](https://mcashier.ds.pro/login/)操作补单**（`reopened=true` 路径）。
+2. **未确认支付方式的订单不进入检测或补单**：[DSPay](#term-dspay) 只扫描支付字段完整的 `CREATED` / `TIMEOUT` 订单；缺少支付方式时，补单返回“缺少支付方式，该订单不可补单”。订单进入 `CLOSED` 后自动检测停止，后续到账需商户在后台核实并补单（`reopened=true` 路径）。
 3. **补单不强制金额匹配**：自动检测要求链上金额与 `payAmount` 精确匹配（`compareTo == 0`）；手动补单则不校验金额，仅记录差额（`amountDiff = 实际 - 应付`），由商户自行判断。
 
 > 💡 **为什么 CLOSED 后停止自动检测？**
@@ -676,6 +694,7 @@ Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end
 {
   "orderNo": "DS202406071234567890",
   "outOrderNo": "MY-ORDER-20260715-001",
+  "attach": {"customerId": "CUST-1001", "source": "web"},
   "eventType": "COMPLETED",
   "status": "COMPLETED",
   "payAmount": "100.001",
@@ -689,6 +708,7 @@ Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end
   "txHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
   "tokenSymbol": "USDT",
   "contractAddress": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+  "receivingAddress": "0x1111111111111111111111111111111111111111",
   "networkId": "evm--1",
   "chainName": "Ethereum",
   "reopened": false,
@@ -698,27 +718,29 @@ Node.js 可运行 Demo 统一维护在 [`Demo/back-end/nodejs`](../Demo/back-end
 
 **字段说明**：
 
-| 字段 | 类型 | 必返 | 说明 |
-|------|------|------|------|
-| `orderNo` | string | 是 | 订单号，如 `DS2024...` |
-| `outOrderNo` | string | 是 | 商户外部订单号（创建订单时必传，原样回传） |
-| `eventType` | string | 是 | 事件类型：`CLOSED` / `COMPLETED` / `REFUNDED` |
-| `status` | string | 是 | 订单当前状态枚举 |
-| `payAmount` | string\|null | 是 | 实际支付金额（含尾数，Decimal 字符串） |
-| `originPayAmount` | string\|null | 是 | 商品原价（不含尾数） |
-| `amountSuffix` | string\|null | 是 | 订单识别尾数（用于精确匹配订单） |
-| `actualReceivedAmount` | string\|null | 是 | 实际到账金额（扣除 gas 后） |
-| `actualUsdAmount` | string\|null | 是 | 实际到账 USD 价值（完成时锁定：CHAIN_DETECTION 约等于 usdAmount；SUPPLEMENT=actual × 补单时现价） |
-| `refundAmount` | string\|null | 是 | 退款代币金额（仅 REFUNDED 事件非 null） |
-| `refundUsdAmount` | string\|null | 是 | 退款 USD 价值（退款时锁定 = refundAmount × 退款时现价） |
-| `refundTxHash` | string\|null | 是 | 退款交易哈希（仅 REFUNDED 事件非 null） |
-| `txHash` | string\|null | 是 | 链上交易哈希 |
-| `tokenSymbol` | string | 是 | 代币符号，如 `USDT` |
-| `contractAddress` | string\|null | 是 | 代币合约地址。原生币（如 ETH/BNB/SOL）为 null；代币（如 USDT/USDC）为对应链的合约地址。与创建订单时 `contractAddress` 参数一致 |
-| `networkId` | string | 是 | 网络 ID，如 `evm--1` |
-| `chainName` | string | 是 | 链显示名称。与 [`GET /dspay/public/supported-chains`](#查询支持链代币白名单) 返回的 `chainName` 字段**完全一致**（如 `Ethereum` / `BNB Chain` / `Polygon` / `Solana` 等），便于商户后台直接展示 |
-| `reopened` | boolean | 是 | 是否为 `CLOSED` 后由商户手动补单重开的路径 |
-| `timestamp` | long | 是 | [DSPay](#term-dspay) 发送时间戳（毫秒） |
+| 字段 | 类型 | 必返 | 允许 null | 说明 |
+|------|------|------|-----------|------|
+| `orderNo` | string | 是 | 否 | 订单号，如 `DS2024...` |
+| `outOrderNo` | string | 是 | 否 | 商户外部订单号（创建订单时必传，原样回传） |
+| `attach` | object | 条件 | 否 | 创建订单时传入则原样回传；未传时省略该字段，不返回 `null` |
+| `eventType` | string | 是 | 否 | 事件类型：`CLOSED` / `COMPLETED` / `REFUNDED` |
+| `status` | string | 是 | 否 | 订单当前状态枚举 |
+| `payAmount` | string | 是 | 是 | 最终应付金额（含尾数，Decimal 字符串）；未确认支付方式就关闭时为 `null` |
+| `originPayAmount` | string | 是 | 否 | 商户创建订单时提交的原始应付金额（不含尾数） |
+| `amountSuffix` | string | 是 | 否 | 订单识别尾数；未产生尾数时为 `"0"` |
+| `actualReceivedAmount` | string | 是 | 是 | 实际到账金额；尚未确认到账时为 `null` |
+| `actualUsdAmount` | string | 是 | 是 | 实际到账 USD 价值；尚未确认到账时为 `null` |
+| `refundAmount` | string | 是 | 是 | 退款代币金额；仅 `REFUNDED` 事件有值，其他事件为 `null` |
+| `refundUsdAmount` | string | 是 | 是 | 退款 USD 价值；仅 `REFUNDED` 事件有值，其他事件为 `null` |
+| `refundTxHash` | string | 是 | 是 | 退款交易哈希；仅 `REFUNDED` 事件有值，其他事件为 `null` |
+| `txHash` | string | 是 | 是 | 链上交易哈希；尚未确认到账时为 `null` |
+| `tokenSymbol` | string | 是 | 是 | 已选代币符号，如 `USDT`；未确认支付方式就关闭时为 `null` |
+| `contractAddress` | string | 是 | 是 | 已选代币合约地址；未确认支付方式或选择原生币时为 `null` |
+| `receivingAddress` | string | 是 | 是 | 用户确认支付方式后锁定的商户收款地址；未确认支付方式时为 `null` |
+| `networkId` | string | 是 | 是 | 已选网络 ID，如 `evm--1`；未确认支付方式就关闭时为 `null` |
+| `chainName` | string | 是 | 是 | 已选链显示名称；未确认支付方式就关闭时为 `null`。有值时与 [`GET /dspay/public/supported-chains`](#查询支持链代币白名单) 返回值一致 |
+| `reopened` | boolean | 是 | 否 | 是否为 `CLOSED` 后由商户手动补单重开的路径 |
+| `timestamp` | long | 是 | 否 | [DSPay](#term-dspay) 发送时间戳（Unix 毫秒） |
 
 > **金额字段说明（5.1.5）**：
 > - `originPayAmount`：商品原价，与商户创建订单时传入的一致
@@ -755,6 +777,10 @@ public class DspaySignatureVerifier {
      * @param secret    apiSecret 字符串（直接使用，不要 Base64 解码）
      */
     public static boolean verify(String payload, String signature, String secret) throws Exception {
+        if (payload == null || secret == null || signature == null
+                || !signature.matches("(?i)^[0-9a-f]{64}$")) {
+            return false;
+        }
         Mac mac = Mac.getInstance("HmacSHA256");
         // 关键：secret 直接 getBytes，不做 Base64 解码
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -782,6 +808,9 @@ public class DspaySignatureVerifier {
 const crypto = require('crypto');
 
 function verifySignature(payload, signature, secret) {
+    if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/i.test(signature)) {
+        return false;
+    }
     // 关键：secret 直接作为 key，不做 Base64 解码
     const expected = crypto
         .createHmac('sha256', secret)
@@ -811,7 +840,10 @@ public class ReplayAttackGuard {
      */
     public static boolean isFresh(long timestamp) {
         long now = System.currentTimeMillis();
-        return Math.abs(now - timestamp) < TOLERANCE_MS;
+        // 不使用 Math.abs(now - timestamp)，避免 Long.MIN_VALUE 溢出绕过校验。
+        return timestamp >= 0
+                && timestamp <= now + TOLERANCE_MS
+                && now - timestamp <= TOLERANCE_MS;
     }
 }
 ```
@@ -829,7 +861,7 @@ public class ReplayAttackGuard {
 
 ```sql
 CREATE TABLE notify_processed (
-    order_no   VARCHAR(32) NOT NULL,
+    order_no   VARCHAR(64) NOT NULL,
     event_type VARCHAR(32) NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (order_no, event_type)
@@ -837,9 +869,11 @@ CREATE TABLE notify_processed (
 ```
 
 ```java
-public void handleNotify(NotifyPayload payload) {
+@Transactional(rollbackFor = Exception.class)
+public void handleNotify(NotifyPayload payload) throws Exception {
     try {
-        // INSERT IGNORE：重复插入返回 affected rows = 0
+        // 幂等记录和业务处理必须位于同一个数据库事务中。
+        // INSERT IGNORE：重复插入返回 affected rows = 0。
         int affected = jdbc.update(
             "INSERT IGNORE INTO notify_processed (order_no, event_type) VALUES (?, ?)",
             payload.getOrderNo(), payload.getEventType()
@@ -848,10 +882,10 @@ public void handleNotify(NotifyPayload payload) {
             // 重复回调，直接 ACK，避免 DSPay 持续重试
             return;
         }
-        // 首次处理，执行业务逻辑
+        // 首次处理；异常会回滚业务数据和幂等记录，允许 DSPay 重试。
         fulfillOrder(payload.getOrderNo());
     } catch (Exception e) {
-        // 业务异常 → 不 ACK，让 DSPay 重试
+        // 继续抛出，不返回 SUCCESS。
         throw e;
     }
 }
@@ -860,15 +894,25 @@ public void handleNotify(NotifyPayload payload) {
 #### 推荐实现 B：Redis SETNX
 
 ```java
-public void handleNotify(NotifyPayload payload) {
+public void handleNotify(NotifyPayload payload) throws Exception {
     String key = "notify:" + payload.getOrderNo() + ":" + payload.getEventType();
-    boolean firstTime = redis.opsForValue().setIfAbsent(key, "1", Duration.ofMinutes(30));
+    // PROCESSING 使用短 TTL，避免进程崩溃后占位长期不释放。
+    boolean firstTime = redis.opsForValue()
+            .setIfAbsent(key, "PROCESSING", Duration.ofMinutes(5));
     if (!firstTime) {
         // 重复回调，直接 ACK，避免 DSPay 重试
         return;
     }
-    // 首次处理，执行业务逻辑
-    fulfillOrder(payload.getOrderNo());
+    try {
+        // 首次处理，执行业务逻辑。
+        fulfillOrder(payload.getOrderNo());
+        // 成功后转为 DONE，保留时间覆盖完整回调重试周期；建议至少 30 天。
+        redis.opsForValue().set(key, "DONE", Duration.ofDays(30));
+    } catch (Exception e) {
+        // 业务失败时释放占位，允许 DSPay 下一次重试重新处理。
+        redis.delete(key);
+        throw e;
+    }
 }
 ```
 
@@ -928,7 +972,7 @@ Content-Type: application/json
 
 > ⚠️ **幂等表设计提示**：11 次尝试可能重复投递同一事件。强烈建议用 `orderNo + eventType` 联合 key 做幂等去重（参考 [§5.8 幂等设计](#幂等设计)），不要用自增 ID 或 timestamp。
 
-> ⚠️ **旧事件取消语义**：若发送过程中订单状态升级（如 `CLOSED` 通知重试时订单已被补单为 `COMPLETED`），[DSPay](#term-dspay) 会停止发送旧事件，避免事件类型与最新订单状态冲突，并另行发送新状态事件（如 `COMPLETED` + `reopened=true`）。
+> ⚠️ **先前事件停止重试**：若发送过程中订单状态变化（如 `CLOSED` 通知重试时订单已被补单为 `COMPLETED`），[DSPay](#term-dspay) 会停止发送先前事件，避免事件类型与最新订单状态冲突，并另行发送新状态事件（如 `COMPLETED` + `reopened=true`）。
 
 ### 5.10 事件类型说明
 
@@ -946,208 +990,71 @@ Content-Type: application/json
 <a id="商户主动查询订单回调兜底"></a>
 ### 5.11 商户主动查询订单（回调兜底）
 
-如果商户没有成功收到回调，可以使用该接口主动查询订单最新状态。该接口是**回调失败时的兜底手段**，不能替代回调；建议结合本地订单状态和退避策略按需轮询，避免持续高频请求。
-
-#### 接口
-
 ```http
-POST /dspay/order/query
+POST /dspay/public/order/query
 Content-Type: application/json
 ```
 
-示例完整地址：
+| 字段 | 必填 | 签名 | 说明 |
+|---|---:|---:|---|
+| `merchantNo` | 是 | 是 | 商户编号；不能为空；最多 32 个字符 |
+| `orderNo` | 条件 | 非空时 | 与 `outOrderNo` 至少一个非空；最多 64 个字符 |
+| `outOrderNo` | 条件 | 非空时 | 与 `orderNo` 至少一个非空；最多 64 个字符 |
+| `timestamp` | 是 | 是 | Unix 毫秒时间戳；与服务端时间差绝对值不得超过 300000 毫秒 |
+| `signature` | 是 | 否 | HMAC-SHA256 小写十六进制字符串，固定 64 个字符 |
+
+同时传两个订单号时按 AND 匹配。非空字段按以下顺序签名，空可选字段不进入签名串：
 
 ```text
-https://wallet.ds.pro/dspay/order/query
+merchantNo -> orderNo（如有） -> outOrderNo（如有） -> timestamp
 ```
-
-#### 请求字段
-
-| 字段 | 类型 | 必填 | 限制与说明 |
-|------|------|------|------------|
-| `merchantNo` | string | 是 | 商户编号，最长 32 字符；参与签名 |
-| `orderNo` | string | 条件必填 | DSPay 订单号，最长 64 字符；与 `outOrderNo` 至少传一个；参与签名 |
-| `outOrderNo` | string | 条件必填 | 商户外部订单号，最长 128 字符；与 `orderNo` 至少传一个；参与签名；可能查询出多条 |
-| `timestamp` | long | 是 | 当前 Unix 毫秒时间戳，必须在服务端时间 ±5 分钟内 |
-| `signature` | string | 是 | 规范化字符串的 HMAC-SHA256 hex 小写签名，最长 128 字符 |
-
-查询规则：
-
-- 只查询当前 `merchantNo` 名下订单。
-- 仅传一个订单号时，按该字段精确匹配。
-- 两个订单号同时传入时，按 `orderNo AND outOrderNo` 精确匹配。
-- 未传的可选字段在签名原文中仍保留 key，value 使用空字符串。
-- 查询结果按 `createAt` 倒序排列；查无结果返回空数组 `[]`，不返回 `ORDER_NOT_FOUND`。
-
-#### 查询签名
-
-字段固定顺序：
 
 ```text
-merchantNo → orderNo → outOrderNo → timestamp
+merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=1787292500000
 ```
 
-规范化字符串：
+公共接口使用统一响应包；顶层 `code = 0` 表示成功，订单数组位于 `data`，未查到时 `data=[]`。
 
-```text
-merchantNo={merchantNo}&orderNo={orderNo}&outOrderNo={outOrderNo}&timestamp={timestamp}
-```
+| 字段 | 必返 | 说明 |
+|---|---:|---|
+| `orderNo` | 是 | DSPay 订单号 |
+| `outOrderNo` | 是 | 商户订单号 |
+| `createAt` | 是 | 创建时间，Unix 毫秒 |
+| `status` | 是 | 当前订单状态 |
+| `originPayAmount` | 是 | 创建时提交的原始金额 |
+| `amountSuffix` | 是 | 识别尾数；未 Pay Now 或无尾数时为 `0` |
+| `payAmount` | 否 | 最终应付金额；Pay Now 后返回 |
+| `networkId` | 否 | 已锁定网络；Pay Now 后返回 |
+| `tokenAddress` | 否 | 已锁定代币合约或 mint 地址 |
+| `receivingAddress` | 否 | 本订单锁定的商户收款地址 |
+| `payerAddress` | 否 | 链上检测到的付款地址 |
+| `txHash` | 否 | 到账交易哈希 |
+| `txLink` | 否 | 到账交易浏览器链接 |
+| `productPrice` | 否 | 创建时传入的商品法币价格 |
+| `productPriceCurrency` | 否 | 商品价格币种 |
+| `productId` | 否 | 商户产品 ID |
+| `attach` | 否 | 创建时传入的附加 JSON，原样回传 |
+| `actualReceivedAmount` | 否 | 实际到账代币金额 |
+| `paidSource` | 否 | `CHAIN_DETECTION` 或 `SUPPLEMENT` |
+| `paidAt` | 否 | 检测到付款时间，Unix 毫秒 |
+| `completedAt` | 否 | 完成时间，Unix 毫秒 |
+| `refundTxHash` | 否 | 退款交易哈希 |
+| `refundTxLink` | 否 | 退款交易浏览器链接 |
+| `refundAmount` | 否 | 退款代币金额 |
+| `refundAt` | 否 | 退款完成时间，Unix 毫秒 |
+| `refundRemark` | 否 | 退款备注 |
 
-例如仅按 `outOrderNo` 查询：
+不返回 `usdAmount/actualUsdAmount/refundUsdAmount/amountDiff/statusDesc/tokenSymbol`。
+查询建议：
 
-```text
-merchantNo=DSM1&orderNo=&outOrderNo=MY-ORDER-20260715-001&timestamp=1717689600000
-```
+- 正常路径以回调为主；仅在未收到回调、用户从跳转页返回或对账时主动查询。
+- 使用退避间隔，不要固定高频轮询；每次查询重新生成 `timestamp` 和 `signature`。
+- 查询到目标状态后停止轮询；无论回调还是查询，本地状态更新都必须幂等。
 
-签名计算：
-
-```text
-signature = hex_lowercase(HMAC_SHA256(apiSecret UTF-8 bytes, canonical UTF-8 bytes))
-```
-
-> `orderNo` / `outOrderNo` 为 null、空字符串或纯空白时，签名 value 统一为空字符串；非空时先 `trim()`。`apiSecret` 直接作为 UTF-8 key 使用，不要 Base64 解码。每次轮询都必须生成新的 `timestamp` 和 `signature`。
-
-#### Node.js 18+ 最小 Demo
-
-```js
-const crypto = require('node:crypto');
-
-const DSPAY_BASE_URL = 'https://wallet.ds.pro';
-const API_SECRET = '你的-apiSecret';
-
-async function queryOrders() {
-    // orderNo / outOrderNo 至少一个非空。本例按商户外部订单号查询。
-    const params = {
-        merchantNo: 'DSM1',
-        orderNo: '',
-        outOrderNo: 'MY-ORDER-20260715-001',
-    };
-
-    const opt = (value) =>
-        value == null || String(value).trim() === '' ? '' : String(value).trim();
-    const timestamp = Date.now();
-    const canonical = [
-        `merchantNo=${params.merchantNo}`,
-        `orderNo=${opt(params.orderNo)}`,
-        `outOrderNo=${opt(params.outOrderNo)}`,
-        `timestamp=${timestamp}`,
-    ].join('&');
-    const signature = crypto
-        .createHmac('sha256', API_SECRET)
-        .update(canonical, 'utf8')
-        .digest('hex');
-
-    const response = await fetch(`${DSPAY_BASE_URL}/dspay/order/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ...params,
-            orderNo: opt(params.orderNo),
-            outOrderNo: opt(params.outOrderNo),
-            timestamp,
-            signature,
-        }),
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text}`);
-    }
-
-    const orders = JSON.parse(text);
-    if (!Array.isArray(orders)) {
-        throw new Error(`响应格式错误: ${text}`);
-    }
-    console.log(JSON.stringify(orders, null, 2));
-    return orders;
-}
-
-queryOrders().catch(console.error);
-```
-
-#### 响应示例
-
-接口直接返回订单数组：
-
-```json
-[
-  {
-    "orderNo": "DS00000120260702000001",
-    "outOrderNo": "MY-ORDER-20260715-001",
-    "createAt": 1717689600000,
-    "status": "COMPLETED",
-    "statusDesc": "已完成",
-    "payAmount": 100.001,
-    "originPayAmount": 100,
-    "amountSuffix": 0.001,
-    "usdAmount": 100,
-    "tokenSymbol": "USDT",
-    "networkId": "evm--1",
-    "receivingAddress": "0x1111111111111111111111111111111111111111",
-    "payerAddress": "0x2222222222222222222222222222222222222222",
-    "txHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    "txLink": "https://wallet.ds.pro/v1/eth/tx/0xabcdef...",
-    "productPrice": 100,
-    "productPriceCurrency": "USD",
-    "actualReceivedAmount": 100.001,
-    "amountDiff": 0,
-    "actualUsdAmount": 100,
-    "paidSource": "CHAIN_DETECTION",
-    "paidAt": 1717689660000,
-    "completedAt": 1717689720000
-  }
-]
-```
-
-响应使用 `NON_NULL` 序列化：尚未产生值的字段会被省略，不一定以 `null` 返回。
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `orderNo` | string | DSPay 订单号 |
-| `outOrderNo` | string | 商户外部订单号 |
-| `createAt` | long | 创建时间，Unix 毫秒 |
-| `status` | string | `CREATED` / `TIMEOUT` / `CLOSED` / `COMPLETED` / `REFUNDED` |
-| `statusDesc` | string | 订单状态描述 |
-| `payAmount` | decimal | 应付代币金额，包含 DSPay 尾数 |
-| `originPayAmount` | decimal | 商户原始金额，不含尾数；历史订单可能省略 |
-| `amountSuffix` | decimal | 订单识别尾数；历史订单可能省略 |
-| `usdAmount` | decimal | 创建订单时锁定的 USD 金额快照 |
-| `tokenSymbol` | string | 代币符号，如 `USDT` |
-| `networkId` | string | 链标识，如 `evm--1` |
-| `receivingAddress` | string | 收款地址 |
-| `payerAddress` | string | 付款地址；未付款时省略 |
-| `txHash` | string | 链上交易哈希；未上链时省略 |
-| `txLink` | string | 交易浏览器跳转链接；无法生成时省略 |
-| `productPrice` | decimal | 商品价格；未提供时省略 |
-| `productPriceCurrency` | string | 商品价格币种；未提供时省略 |
-| `actualReceivedAmount` | decimal | 实际到账代币金额；未完成时省略 |
-| `amountDiff` | decimal | `actualReceivedAmount - payAmount`；未完成时省略 |
-| `actualUsdAmount` | decimal | 完成时锁定的实际到账 USD 价值；未完成时省略 |
-| `paidSource` | string | `CHAIN_DETECTION`（链上检测）或 `SUPPLEMENT`（人工补单）；未完成时省略 |
-| `paidAt` | long | 付款时间，Unix 毫秒；未付款时省略 |
-| `completedAt` | long | 完成时间，Unix 毫秒；未完成时省略 |
-
-常见错误：
-
-| 错误码 | 原因 |
-|--------|------|
-| [`40001`](#error-40001) | `orderNo` 与 `outOrderNo` 均为空，或字段格式不合法 |
-| [`50501`](#error-50501) | `merchantNo` 不存在 |
-| [`50503`](#error-50503) | `apiSecret` 已冻结 |
-| [`50613`](#error-50613) | 缺少签名、签名字段顺序错误或签名不匹配 |
-| [`50614`](#error-50614) | `timestamp` 超出 ±5 分钟窗口 |
-
-轮询建议：
-
-- 正常路径以回调为主，仅在超过业务预期时间仍未收到回调时启用查询。
-- 使用退避间隔，不要固定高频轮询。
-- 每次查询重新生成时间戳和签名。
-- 查询到目标状态后停止轮询；空数组表示当前没有匹配订单，可稍后按业务策略重试。
-- 无论回调还是主动查询，订单状态更新都必须保持幂等。
 
 ### 5.12 ⚠️ 坑点（6 条）
 
-1. **raw body 验签**：用 HTTP body 原始字符串，不能反序列化后重新 `JSON.stringify()`（字段顺序变化 → 签名不一致）。Java 用 `@RequestBody String rawBody`，Node.js 用 `raw-body` 包提取原始字节流。这是回调验签失败**最常见**的原因。
+1. **raw body 验签**：用 HTTP body 原始字符串，不能反序列化后重新 `JSON.stringify()`（字段顺序变化 → 签名不一致）。Java Web框架可直接接收原始请求体；本仓库Node.js Demo使用内置HTTP请求流累积原始字节，不需要安装 `raw-body` 或其他npm包。这是回调验签失败**最常见**的原因。
 
 2. **HMAC secret 直接 getBytes，不 Base64 解码**：[apiSecret](#term-apisecret) 是 Base64Url 编码 43 字符，但作为 HMAC key 时直接 `secret.getBytes(UTF_8)`，**不要先 Base64 解码**。Base64Url 只是密钥的存储编码，[HMAC-SHA256](#term-hmac-sha256) 对 key 字节序列没有格式要求。
 
@@ -1222,7 +1129,7 @@ queryOrders().catch(console.error);
 
 3. **11 次发送均失败后停止自动重试**：3 次立即发送 + 8 次阶梯式补偿，理论累计跨度约 43 小时 21 分 30 秒，实际时间可能因请求耗时和调度器扫描更长。商户应通过订单查询或对账发现遗漏状态，并提供人工补处理流程。
 
-4. **旧事件可能停止重试**：发送过程中订单状态升级（如 `CLOSED` 重试时订单被补单为 `COMPLETED`），DSPay 会取消旧事件发送，另行发送新状态事件。商户只需按 `orderNo + eventType` 幂等处理收到的事件。
+4. **先前事件可能停止重试**：发送过程中订单状态变化（如 `CLOSED` 重试时订单被补单为 `COMPLETED`），DSPay 会取消先前事件发送，另行发送新状态事件。商户只需按 `orderNo + eventType` 幂等处理收到的事件。
 
 5. **统计金额使用 `COALESCE(actual_usd_amount, usd_amount)`**：优先使用完成时锁定的实际到账 USD 价值（含补单时实时汇率），fallback 到订单创建时锁定的 `usd_amount` 快照。**影响**：补单场景实际金额可能因补单时现价波动而与创建时不一致；链上检测完成（CHAIN_DETECTION）场景两者基本相等。
 
@@ -1242,7 +1149,9 @@ queryOrders().catch(console.error);
 **[DSPay](#term-dspay) 行为**：
 - ❌ **不发回调**（TIMEOUT 是中间过渡态）
 - ✅ 订单仍可继续等待付款 + 链上自动检测
-- ✅ 用户可在 40 分钟内继续支付（直到 CLOSED）
+- 已在超时前确认支付方式的订单仍会继续链上检测，直至 CLOSED
+- 始终未确认支付方式的订单不能在超时后重新启动支付
+- 配置 `returnUrl` 时，DSPay 收银台在 TIMEOUT 场景跳转该地址；未配置时停留超时页
 
 **商户处理**：
 - 前端展示"支付超时，仍可继续支付"提示
@@ -1311,7 +1220,7 @@ queryOrders().catch(console.error);
 
 - 启动 [DSPay](#term-dspay) 服务：`mvn spring-boot:run -Dspring-boot.run.profiles=local`
 - 测试链信息：本地默认使用各链主网 RPC（生产配置同）
-- 测试代币：使用小额真实代币测试（如 0.01 [USDT](#term-usdt)）
+- 测试代币：钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 测试订单及识别尾数；另备足够的链上 Gas 代币
 
 ### 8.2 回调测试（ngrok / cpolar）
 
@@ -1335,16 +1244,16 @@ ngrok http 8080
    - 复制规范化字符串 + [apiSecret](#term-apisecret)
    - 在线工具计算 [HMAC-SHA256](#term-hmac-sha256) hex
    - 对比你的代码输出
-2. **端到端创建订单**：用 [§4.8 / §4.9](#java-端到端-demo) 的 demo 创建订单，确认返回 `orderNo` + `payAmount`（含尾数）
+2. **端到端创建订单**：用 [§4.6 / §4.7](#java-端到端-demo) 的 Demo 创建订单，确认返回 `orderNo` + `checkoutUrl`，并能打开收银台
 3. **触发回调验签**：用真实代币付款，触发 `COMPLETED` 回调，验签通过
 4. **测试幂等性**：手动重发同一回调请求，确认商户后端不会重复发货
 
 ### 8.4 测试代币
 
 各链主网小额稳定币测试：
-- Ethereum：0.01 [USDT](#term-usdt)（`0xdac17f958d2ee523a2206206994597c13d831ec7`）
-- BSC：0.01 [USDT](#term-usdt)（`0x55d398326f99059fF775485246999027B3197955`）
-- Tron：0.01 [USDT](#term-usdt)（`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`）
+- Ethereum：至少 0.02 [USDT](#term-usdt)（`0xdac17f958d2ee523a2206206994597c13d831ec7`），另备 ETH 支付 Gas
+- BSC：至少 0.02 [USDT](#term-usdt)（`0x55d398326f99059fF775485246999027B3197955`），另备 BNB 支付 Gas
+- Tron：至少 0.02 [USDT](#term-usdt)（`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`），另备 TRX 或足够能量/带宽
 
 > 测试付款金额必须与收银台显示的 `payAmount`（含尾数）完全一致，否则链上检测不匹配。
 
@@ -1385,7 +1294,7 @@ A: 不能。[SIWE](#term-siwe) 需要私钥签名，观察钱包无法 `personal
 ### 9.2 签名类
 
 **Q: 签名一直验签失败（[`50613`](#error-50613)）？**
-A: 常见原因是 BigDecimal 科学计数法。`new BigDecimal("1E+2").toString()` 输出 `1E+2`，必须用 `toPlainString()` 输出 `100`。检查 `payAmount` 是否为最多 2 位小数的普通十进制字符串，以及规范化字符串中是否有 `E` 字符。
+A: 常见原因是字段顺序、空字段、Decimal、`attach` 或 `allowedPaymentMethods` 规范化不一致。Decimal 必须使用普通十进制形式，例如 Java 使用 `BigDecimal.toPlainString()`；再逐项核对 [§4.4](#签名规范化字符串) 的完整字段顺序。
 
 **Q: Node.js 金额精度怎么处理？**
 A: `productPrice` 和 `payAmount` 用字符串字面量 `'99.99'` 或 Big.js，不能用 JS number。JS number 超过 `Number.MAX_SAFE_INTEGER` 或极小 decimal 会进入科学计数法。
@@ -1394,12 +1303,12 @@ A: `productPrice` 和 `payAmount` 用字符串字面量 `'99.99'` 或 Big.js，�
 A: **不需要**。[apiSecret](#term-apisecret) 字符串直接作为 HMAC key 使用。Base64Url 只是密钥的存储编码，[HMAC-SHA256](#term-hmac-sha256) 对 key 字节序列没有格式要求。`secret.getBytes(UTF_8)` 直接传给 `SecretKeySpec`。
 
 **Q: 签名字段顺序错了会怎样？**
-A: 签名不一致 → [`50613`](#error-50613)。必须严格按 `merchantNo → outOrderNo → payAmount → timestamp` 顺序拼接，用 `&` 连接，**顺序敏感**。`outOrderNo` 必填且非空，必须同时出现在签名和收银台 URL 中。可选商品字段不参与签名；链和代币由用户在收银台选择。
+A: 签名不一致 → [`50613`](#error-50613)。必须严格按 `merchantNo → outOrderNo → productPrice → productPriceCurrency → productId → attach → payAmount → allowedPaymentMethods → returnUrl → successRedirectUrl → timestamp` 拼接。所有业务字段参与签名，可选字段未传时仍保留 `key=`。
 
 ### 9.3 订单类
 
-**Q: 收银台显示的 payAmount 为什么不是链接中传入的金额？**
-A: 尾数机制。[DSPay](#term-dspay) 为每个订单附加唯一尾数（如 100.001），用于区分同金额并发订单。用户必须按收银台显示的 `payAmount`（含尾数）付款，否则链上检测不匹配。商户对账以回调或主动查询结果为准。
+**Q: 收银台显示的 payAmount 为什么不是创建请求中的 originPayAmount？**
+A: 尾数机制。创建接口先记录原始金额；用户确认支付方式时，[DSPay](#term-dspay) 分配识别尾数，最终应付金额可能变为 100.001。用户必须按收银台显示金额付款，商户以回调或查询结果对账。
 
 **Q: 打开收银台提示 [`50609`](#error-50609) NO_ENABLED_ADDRESS？**
 A: 链支持但商户没为该 [networkId](#term-networkid)（链）配 ENABLED 收款地址。去 [DSPay 后台](https://mcashier.ds.pro/login/)配置收款地址。
@@ -1421,8 +1330,8 @@ A: 检查响应是否符合 `{"code":"SUCCESS"}` 严格格式。`code` 必须是
 **Q: 重试策略是什么？**
 A: 共尝试 11 次：3 次立即发送，再按相对上一次尝试 30s / 1min / 5min / 15min / 1h / 6h / 12h / 24h 阶梯补偿。理论累计跨度约 43 小时 21 分 30 秒，实际时间可能更长。11 次均失败后停止自动发送；商户应通过订单查询或对账补处理。
 
-**Q: 旧事件重试期间订单状态升级会怎样？**
-A: [DSPay](#term-dspay) 会停止发送旧事件，并另行发送新状态事件。例如 `CLOSED` 重试期间订单被补单为 `COMPLETED`，旧 `CLOSED` 停止发送，随后发送 `COMPLETED`。商户按 `orderNo + eventType` 幂等处理即可。
+**Q: 先前事件重试期间订单状态变化会怎样？**
+A: [DSPay](#term-dspay) 会停止发送先前事件，并另行发送新状态事件。例如 `CLOSED` 重试期间订单被补单为 `COMPLETED`，`CLOSED` 停止发送，随后发送 `COMPLETED`。商户按 `orderNo + eventType` 幂等处理即可。
 
 **Q: reopened=true 是什么场景？**
 A: 订单处于 CLOSED 后，商户在后台核实链上到账并执行手动补单。[DSPay](#term-dspay) 将订单重开为 `COMPLETED`，并发送 `reopened=true` 回调。商户可据此区分普通完成与人工补单完成。
@@ -1439,7 +1348,7 @@ A: **不会**。`CREATED` / `TIMEOUT` 只推进订单状态，不发送回调。
 A: 半夜应急 → 在 [DSPay 后台](https://mcashier.ds.pro/login/)冻结密钥（止血）；确认泄漏 → 在后台 regenerate 换新 key。不要仅恢复旧 key。
 
 **Q: 地址白名单和商户 ENABLED 地址什么区别？**
-A: 平台白名单（以 `GET /dspay/public/supported-chains` 返回为准）定义"[DSPay](#term-dspay) 支持哪些链"；商户级收款地址定义"本商户在每条链上用哪个地址收款"（在 [DSPay 后台](https://mcashier.ds.pro/login/)配置）。创建订单时两个条件都要满足。
+A: 平台白名单定义 DSPay 支持哪些支付方式；商户已启用地址定义本商户能在哪些网络收款；创建请求的 `allowedPaymentMethods` 可进一步缩小用户选择范围。收银台展示三者交集。
 
 **Q: [`50503`](#error-50503) API_SECRET_DISABLED 怎么处理？**
 A: 密钥已被冻结。如果是自己冻结的，排查完成后在后台恢复密钥；如果是他人操作，联系商户管理员。
@@ -1451,15 +1360,15 @@ A: 密钥已被冻结。如果是自己冻结的，排查完成后在后台恢�
 <a id="附录-a-java-综合接入示例"></a>
 ## 附录 A：Java 综合接入示例
 
-Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。该 Demo 同时覆盖本地签名生成收银台链接、回调 raw body 验签和严格 ACK。
+Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。该 Demo 同时覆盖服务端预下单签名、调用公共创建接口、跳转 `checkoutUrl`、回调 Raw Body 验签、严格 ACK 和主动查询。
 
 | 文件 | 用途 |
 |------|------|
 | [`README.zh-CN.md`](../Demo/back-end/java/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
-| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | 本地签名、URL 编码、收银台跳转、回调验签与严格响应 |
+| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | 创建/查询签名、公共 API 调用、收银台跳转、回调验签与严格响应 |
 | [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | 后台进程启停 |
 
-创建流程为：**商户后端本地签名 → 拼接收银台 URL → 跳转用户**。商户后端不直接调用 DSPay 创建订单 API；用户在收银台选择链和代币后，由收银台完成订单创建。
+创建流程为：**商户后端签名 → 调用公共创建接口 → 获取 `checkoutUrl` → 跳转用户**。用户在收银台选择链和代币后确认支付方式。
 
 > 附录不再复制源码。只需维护权威 Demo，此处始终引用最新实现。
 
@@ -1470,16 +1379,16 @@ Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end
 <a id="附录-b-nodejs-综合接入示例"></a>
 ## 附录 B：Node.js 综合接入示例
 
-Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.zh-CN.md)。该 Demo 仅使用 Node.js 内置模块，同时覆盖收银台跳转和回调验签。
+Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.zh-CN.md)。该 Demo 仅使用 Node.js 内置模块，同时覆盖服务端预下单、收银台跳转、主动查询和回调验签。
 
 | 文件 | 用途 |
 |------|------|
 | [`README.zh-CN.md`](../Demo/back-end/nodejs/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP 路由、收银台 URL 构建、302 跳转与 raw body 回调处理 |
+| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP 路由、公共创建/查询 API 调用、302 跳转与 Raw Body 回调处理 |
 | [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | 创建订单签名与常量时间回调验签 |
 | [`package.json`](../Demo/back-end/nodejs/package.json) | 启动命令与运行时信息 |
 
-创建流程为：**商户后端本地签名 → 拼接收银台 URL → 跳转用户**。商户后端不直接调用 DSPay 创建订单 API；用户在收银台选择链和代币后，由收银台完成订单创建。
+创建流程为：**商户后端签名 → 调用公共创建接口 → 获取 `checkoutUrl` → 跳转用户**。用户在收银台选择链和代币后确认支付方式。
 
 > 附录不再复制源码。只需维护权威 Demo，此处始终引用最新实现。
 
@@ -1500,7 +1409,7 @@ Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/bac
 | <a id="error-40101"></a>40101 | UNAUTHORIZED | 未登录 |
 | <a id="error-40301"></a>40301 | FORBIDDEN | 无权限 |
 | <a id="error-40401"></a>40401 | NOT_FOUND | 资源不存在 |
-| <a id="error-40901"></a>40901 | STATE_CONFLICT | 状态冲突 |
+| <a id="error-40901"></a>40901 | STATE_CONFLICT | 商户订单号已被使用；同一商户复用 `outOrderNo` 但请求业务字段不一致 |
 | <a id="error-50000"></a>50000 | INTERNAL_ERROR | 服务内部异常 |
 
 #### 商户相关（505xx）
@@ -1539,20 +1448,12 @@ Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/bac
 | <a id="error-50706"></a>50706 | CHAIN_ADDRESS_ALREADY_BOUND | 该链地址已被绑定 |
 | <a id="error-50707"></a>50707 | CHAIN_NOT_SUPPORTED | 链不受支持（[networkId](#term-networkid) 不在 9 链白名单或链已禁用） |
 
-#### JWT 认证相关（508xx）
-
-| code | msg | 说明 |
-|------|------|------|
-| <a id="error-50801"></a>50801 | JWT_TOKEN_MISSING | 缺少 [JWT](#term-jwt) Token |
-| <a id="error-50802"></a>50802 | JWT_TOKEN_INVALID | [JWT](#term-jwt) Token 无效 |
-| <a id="error-50803"></a>50803 | JWT_TOKEN_EXPIRED | [JWT](#term-jwt) Token 已过期（含 session 过期） |
-
 #### SIWE 签名认证相关（509xx）
 
 | code | msg | 说明 |
 |------|------|------|
-| <a id="error-50901"></a>50901 | SIWE_NONCE_NOT_FOUND | [SIWE](#term-siwe) [nonce](#term-nonce) 不存在 |
-| <a id="error-50902"></a>50902 | SIWE_NONCE_EXPIRED | [SIWE](#term-siwe) [nonce](#term-nonce) 已过期（TTL 5 分钟） |
+| <a id="error-50901"></a>50901 | SIWE_NONCE_NOT_FOUND | [SIWE](#term-siwe) nonce 不存在 |
+| <a id="error-50902"></a>50902 | SIWE_NONCE_EXPIRED | [SIWE](#term-siwe) nonce 已过期（TTL 5 分钟） |
 | <a id="error-50903"></a>50903 | SIWE_SIGNATURE_INVALID | [SIWE](#term-siwe) 签名无效（ecrecover 恢复地址不匹配） |
 | <a id="error-50904"></a>50904 | SIWE_DOMAIN_MISMATCH | [SIWE](#term-siwe) domain 不匹配 |
 | <a id="error-50905"></a>50905 | SIWE_MESSAGE_INVALID | [SIWE](#term-siwe) 消息无效 |

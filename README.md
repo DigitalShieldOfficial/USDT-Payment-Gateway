@@ -63,7 +63,7 @@ DS-Pay may be used for lawful software services, digital content, e-commerce, an
 
 ## How It Works
 <div align="center">
-  <img src="./src/how-it-works/Implementation Principle_en.png" alt="Implementation Principle_en"/>
+  <img src="./src/how-it-works/Implementation-Principle_en.svg" alt="DSPay merchant pre-order and Pay Now sequence"/>
 </div>
 
 ## Quick Integration
@@ -71,7 +71,7 @@ DS-Pay may be used for lawful software services, digital content, e-commerce, an
 DS-Pay provides a lightweight integration model that minimizes development effort. After completing the basic merchant configuration, merchants can quickly begin accepting cryptocurrency payments.
 
 <div align="center">
-  <img src="./src/quick-integration/Flowchart_en.png" alt="Flowchart_en"/>
+  <img src="./src/quick-integration/Flowchart_en.svg" alt="DSPay merchant integration flow"/>
 </div>
 
 - Log in to the merchant dashboard: quickly register and sign in by scanning a QR code with WalletConnect.
@@ -82,7 +82,11 @@ DS-Pay provides a lightweight integration model that minimizes development effor
 
 - Configure callback URL (optional): receive real-time order status notifications and connect them with your business system.
 
-- Call the order creation API: standardized public APIs allow merchants to create orders with minimal development effort.
+- Create the order server-side: sign and call `POST /dspay/public/order/create`, then receive `orderNo` and `checkoutUrl`.
+
+- Redirect to DSPay Checkout: send the customer to `checkoutUrl`; the customer selects a network/token and confirms Pay Now there.
+
+- Confirm the result: verify webhooks and use `POST /dspay/public/order/query` as the authoritative fallback. A browser redirect is never proof of payment.
 
 Full documentation: [SDK Integration Guide](./SDK/SDK.en-US.md)
 
@@ -98,6 +102,8 @@ The mock merchant demo lets you experience the complete DS-Pay payment integrati
 | [Frontend Integration Guide](./Demo/front-end/) |
 
 [View More Demos](./Demo)
+
+Demo baselines: Node.js `18.20.8` + npm `10.8.2`, JDK 11+, PHP 5.6+, and a modern browser supporting `crypto.randomUUID()`. Only one Node.js version is needed. See [Tested runtimes](./Demo/README.md#tested-runtimes) for exact validated versions and dependency details.
 
 
 ## Contact Us

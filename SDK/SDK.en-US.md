@@ -36,20 +36,20 @@
 |------|------|
 | <a id="term-dspay"></a>**DSPay** | A multi-chain stablecoin payment gateway (this service). |
 | <a id="term-siwe"></a>**SIWE** | Sign-In with Ethereum — the EIP-4361 wallet-login standard. Merchants authenticate by signing a well-formed message with an [EVM](#term-evm) wallet. |
-| <a id="term-jwt"></a>**JWT** | JSON Web Token. Used as the DSPay merchant-portal session credential (7-day sliding expiry). Cashier-URL signing and webhook verification do **not** rely on JWT — they use [apiSecret](#term-apisecret) instead (see [§2.2](#session-lifetime)). |
-| <a id="term-apisecret"></a>**apiSecret** | Merchant API secret. Used to sign cashier URLs and verify incoming webhooks. Obtain it from the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) and store it securely. |
-| <a id="term-merchantno"></a>**merchantNo** | Merchant business identifier (`DSM` prefix, e.g. `DSM1`). Required when generating cashier URLs. This is the **public-facing business code**, not the DB auto-increment primary key (avoids leaking transaction volume and prevents enumeration attacks). |
+| <a id="term-apisecret"></a>**apiSecret** | Merchant API secret used to sign create/query requests and verify incoming webhooks. Obtain it from the Merchant Portal and keep it on the merchant server only. |
+| <a id="term-merchantno"></a>**merchantNo** | Merchant business identifier (`DSM` prefix, e.g. `DSM1`), required by public create/query APIs. |
+| **orderNo** | Unique DSPay order identifier returned after creation; used for Checkout addressing, queries, webhooks and reconciliation. |
+| **checkoutUrl** | Complete Checkout address returned by create: `{payPageBaseUrl}/checkout/{orderNo}`. Redirect to it as returned. |
 | <a id="term-networkid"></a>**networkId** | Canonical chain identifier (e.g. `evm--1` = Ethereum mainnet). Full list in [§3.2](#networkid-cheat-sheet). |
-| <a id="term-contractaddress"></a>**contractAddress** | Token contract address. Combined with [networkId](#term-networkid) to uniquely identify a token at order creation. |
+| <a id="term-contractaddress"></a>**contractAddress** | Token contract or mint address. Combined with `networkId` in `allowedPaymentMethods` to restrict Checkout choices. |
 | <a id="term-hmac-sha256"></a>**HMAC-SHA256** | Hash-based Message Authentication Code. DSPay uses [apiSecret](#term-apisecret) as the key over a canonical string and outputs lowercase hex. |
 | <a id="term-evm"></a>**EVM** | Ethereum Virtual Machine. "EVM-compatible chains" are chains that support Ethereum smart contracts (Ethereum / BSC / Polygon / Arbitrum / Base). |
 | <a id="term-usdt"></a>**USDT** / <a id="term-usdc"></a>**USDC** | USD-pegged stablecoins (Tether USD / Centre USD Coin). |
 | **Fractional Suffix (<a id="term-amountsuffix"></a>amountSuffix)** | A tiny decimal appended by DSPay to differentiate concurrent orders of the same amount (e.g. the `0.001` in `100.001`). Stablecoins are treated as 6-decimal tokens: merchants use at most the first 2 decimal places and DSPay uses the remaining 4 for the suffix. See [§4.1](#order-suffix-mechanism-in-depth). |
 | **Manual Fulfillment (<a id="term-supplement"></a>supplement)** | The operator-confirmed action that reopens a `CLOSED` order as `COMPLETED` after an on-chain payment lands post-timeout. |
 | **Webhook (<a id="term-webhook"></a>webhook)** | The HTTP POST notification DSPay sends to the merchant's [notifyUrl](#term-notifyurl). Event types: `CLOSED` / `COMPLETED` / `REFUNDED`. `CREATED` / `TIMEOUT` advance order state but do not emit webhooks. |
-| <a id="term-notifyurl"></a>**notifyUrl** | The public HTTPS endpoint on the merchant side that receives DSPay webhooks. Must be reachable from the public internet. |
+| <a id="term-notifyurl"></a>**notifyUrl** | Publicly reachable merchant endpoint that receives DSPay webhooks. Both `http://` and `https://` are accepted; use HTTPS in production. |
 | <a id="term-ntp"></a>**NTP** | Network Time Protocol. Used for server clock synchronization. |
-| <a id="term-nonce"></a>**nonce** | One-time random value used during [SIWE](#term-siwe) login to prevent replay attacks. |
 
 > Every occurrence of these terms elsewhere in the document links back to this section.
 
@@ -60,106 +60,74 @@
 <a id="quick-start"></a>
 ## Quick Start (Your First Order in 5 Minutes)
 
-> **Goal:** create an order with the minimum number of steps and inspect the full API response. If you prefer to understand the architecture first, jump to [Chapter 1](#chapter-1-before-you-begin).
+> **Goal:** create an order server-to-server, then redirect the customer to the returned `checkoutUrl`.
 
-**Pre-flight checklist**:
+**Prerequisites**:
 
-| Requirement | How to obtain | Time |
-|------|---------|------|
-| [DSPay](#term-dspay) merchant account | Sign in to the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) with an [EVM](#term-evm) wallet (see [§2.1](#merchant-sign-up-sign-in)) | 30 seconds |
-| Receiving address (any chain) | Configure it in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (see [§3.3](#configure-receiving-addresses)) | 1 minute |
-| [apiSecret](#term-apisecret) | Generated the first time you enable webhooks in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (see [§3.5](#configure-webhook-url-enable-webhooks)) | — |
-| Test stablecoins | Have your wallet hold 0.01 [USDT](#term-usdt) | — |
+| Requirement | Where to get it |
+|---|---|
+| DSPay merchant account | Sign in to the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) |
+| `merchantNo` and `apiSecret` | Merchant Portal security settings |
+| At least one enabled receiving address | Merchant Portal receiving-address settings |
+| `notifyUrl` | Optional for the first request; required before production |
 
-> ⚠️ If you're missing any of the above, complete the relevant section before returning. Step 1 below is dependency-free, so you can try it immediately.
+### Step 1 — Build and sign the request on your server
 
-### Step 1 — Try the cashier in 3 minutes
+The following example uses the unified Node.js `18.20.8` baseline and only required fields. Optional signed fields remain in the canonical string as empty `key=` entries.
 
-The demo below uses the **local-sign + cashier URL** approach: no [DSPay](#term-dspay) API call needed — sign locally with HMAC-SHA256 and get a payment link directly. Users open the link, pick their chain/token on the cashier page, and the cashier frontend creates the order automatically.
-
-> The merchant signs the amount and order number; the payer selects the chain and token in the cashier.
-
-Fill in your `merchantNo` + `apiSecret`, save as `create-order.mjs`, and run `node create-order.mjs`.
-
-**Node.js (Node 18+, zero third-party dependencies)**:
+> Before running it, replace `baseUrl`, `merchantNo`, and `apiSecret` below with real values. Obtain `merchantNo` and `apiSecret` from the DSPay Merchant Portal; the placeholders cannot be used in an actual request.
 
 ```javascript
 import crypto from 'node:crypto';
 
-// ===== [1] Merchant credentials (must fill in) =====
-const MERCHANT_NO = 'DSM1';
-const API_SECRET = 'your-apiSecret';  // Obtain from the DSPay merchant portal
-
-// ===== [2] Fields used in the HMAC signature =====
-const signed = {
-  // Stablecoins use 6 decimals: merchants submit at most 2 decimal places and
-  // DSPay uses the remaining 4 for its suffix. Plain decimal string only; no scientific notation.
-  payAmount: '10.00',
-  outOrderNo: 'MY-ORDER-001',   // Required: merchant external order ID; must not be blank
-};
-
-// ===== [3] Display fields (forwarded to the cashier page; NOT part of the signature) =====
-const display = {
-  productPrice: '9.99',
-  productPriceCurrency: 'USD',
-  productId: 'PROD-001',
-};
-
-// ================ Business logic (no changes needed below) ================
-
-// ① Build the canonical string (fixed order: merchantNo / outOrderNo / payAmount / timestamp, order-sensitive)
+const baseUrl = 'https://wallet.ds.pro'; // Replace with the actual DSPay API base URL.
+const merchantNo = 'replace-with-real-merchantNo'; // Required: Merchant Portal merchantNo.
+const apiSecret = 'replace-with-real-apiSecret';   // Required: Merchant Portal apiSecret.
+const outOrderNo = `ORDER-${Date.now()}`;
+const payAmount = '0.01';
 const timestamp = Date.now();
-const canonical = `merchantNo=${MERCHANT_NO}&outOrderNo=${signed.outOrderNo}&payAmount=${signed.payAmount}&timestamp=${timestamp}`;
-
-// ② HMAC-SHA256 (use secret.getBytes directly; do NOT Base64-decode)
-const signature = crypto.createHmac('sha256', API_SECRET)
+const canonical = [
+  `merchantNo=${merchantNo}`,
+  `outOrderNo=${outOrderNo}`,
+  'productPrice=',
+  'productPriceCurrency=',
+  'productId=',
+  'attach=',
+  `payAmount=${payAmount}`,
+  'allowedPaymentMethods=',
+  'returnUrl=',
+  'successRedirectUrl=',
+  `timestamp=${timestamp}`,
+].join('&');
+const signature = crypto.createHmac('sha256', apiSecret)
   .update(canonical, 'utf8').digest('hex');
 
-// ③ Build the cashier URL
-const url = new URL('https://cashier.ds.pro/');
-url.searchParams.set('merchantNo', MERCHANT_NO);
-url.searchParams.set('outOrderNo', signed.outOrderNo);
-url.searchParams.set('payAmount', signed.payAmount);
-url.searchParams.set('timestamp', String(timestamp));
-url.searchParams.set('signature', signature);
-// Display fields (optional)
-if (display.productPrice) url.searchParams.set('productPrice', display.productPrice);
-if (display.productPriceCurrency) url.searchParams.set('productPriceCurrency', display.productPriceCurrency);
-if (display.productId) url.searchParams.set('productId', display.productId);
-
-console.log('Cashier URL:');
-console.log(url.toString());
-console.log('\nThe link is valid for 5 minutes. Open it in your browser now. Re-run the script if it expires.');
+const response = await fetch(`${baseUrl}/dspay/public/order/create`, {
+  method: 'POST',
+  headers: {'content-type': 'application/json'},
+  body: JSON.stringify({merchantNo, outOrderNo, payAmount, timestamp, signature}),
+});
+const result = await response.json();
+if (result.code !== 0) throw new Error(result.message || result.header?.message || 'DSPay error');
+console.log(result.data.orderNo, result.data.checkoutUrl);
 ```
 
-**Full demos in other languages**: Java (JDK 11+) in [§4.8](#java-end-to-end-demo), Node.js with full error handling in [§4.9](#node.js-end-to-end-demo).
+### Step 2 — Redirect to Checkout
 
-### Step 3 — Inspect the output ✅
+Redirect the customer to `data.checkoutUrl`. DSPay Checkout handles network/token selection, payment-method locking, QR rendering and payment-state display.
 
-Expected output (the signature and timestamp change with each run, so the URL varies):
-
-```
-Cashier URL:
-https://cashier.ds.pro?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=10.00&timestamp=1717689600000&signature=7de3fafc...
-
-The link is valid for 5 minutes. Open it in your browser now. Re-run the script if it expires.
-```
-
-> The URL above demonstrates the format only. Its `timestamp` and `signature` are sample values and cannot be used for a real payment. Run the code to generate a currently valid URL.
-
-Open the cashier URL in your browser — you will see the payment page. Users pick their chain and token, then scan or transfer to complete the payment.
-
-> 💡 The same signed-cashier-URL flow is used in production: keep `apiSecret` on the merchant backend and redirect the payer to the generated URL.
+- The signature window is 5 minutes and protects only the create request from replay.
+- The independent 10-minute payment deadline starts when the order is created.
+- If the customer never confirms a payment method, the order still reaches `TIMEOUT` after 10 minutes.
 
 ### Next Steps
 
-1. [Receive webhooks](#chapter-5-handling-webhooks) — stand up a local endpoint to consume asynchronous payment notifications from [DSPay](#term-dspay).
-2. [Order state machine](#order-state-machine-read-this-first) — understand the full `CREATED → TIMEOUT → CLOSED / COMPLETED` lifecycle.
-3. [Testing & integration](#chapter-8-testing--integration) — ngrok for local webhooks + end-to-end verification + idempotency testing.
+- Read [Chapter 4](#chapter-4-creating-your-first-order) for every request/response field, signing and idempotency.
+- Implement [Chapter 5](#chapter-5-handling-webhooks) before production.
+- Run the maintained [Java, Node.js or PHP demos](../Demo/README.md).
 
 ---
 
-[↑ Back to Table of Contents](#table-of-contents)
 
 <a id="chapter-1-before-you-begin"></a>
 ## Chapter 1: Before You Begin
@@ -188,7 +156,7 @@ This chapter introduces the core concepts and architecture of [DSPay](#term-dspa
 
 | Step | Phase | Description | Output |
 |:----:|-------|-------------|--------|
-| 1 | **Sign up** | [SIWE](#term-siwe) wallet login | Merchant [JWT](#term-jwt) |
+| 1 | **Sign up** | [SIWE](#term-siwe) wallet login | Merchant account |
 | 2 | **Configure payouts** | Addresses + webhook URL | ENABLED addresses |
 | 3 | **Create order** | HMAC-signed request | orderNo + address |
 | 4 | **User pays** | Wallet transfer to address | On-chain tx |
@@ -207,21 +175,46 @@ Before you start integrating, have the following ready:
 - **An [EVM](#term-evm) wallet**: required for [SIWE](#term-siwe) login (MetaMask / Rabby / Trust all work — anything that supports `personal_sign`).
 - **A publicly reachable webhook URL**: where [DSPay](#term-dspay) will POST notifications (for local dev, use ngrok / cpolar).
 - **[NTP](#term-ntp)-synced system clock**: signature verification enforces a ±5-minute window; the server clock must be accurate.
-- **JDK 11+, Node.js 18+, or PHP 5.6+**: to run the corresponding demos. Other languages can follow the specification.
-- **Test stablecoins**: a small amount of mainnet stablecoin on each chain you intend to test (e.g. 0.01 [USDT](#term-usdt)) for end-to-end verification.
+- **JDK 11+, Node.js 18.20.8, or PHP 5.6+**: to run the corresponding demos. Other languages can follow the specification.
+- **Test stablecoins**: keep at least 0.02 [USDT](#term-usdt) on each test chain to cover a 0.01 USDT order plus its matching suffix; fund the wallet's gas token separately.
+
+#### Demo Runtime Versions
+
+The following versions were used to execute the corresponding tests. When copying a sample, prefer a tested version below. “Minimum” is the lowest language/API baseline used by the source.
+
+| Demo | Minimum | Tested versions | External dependencies |
+|------|---------|-----------------|-----------------------|
+| Inline Node.js samples and Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; built-in Node.js modules only |
+| Java Demo and Java verification samples | JDK 11 | Microsoft OpenJDK `11.0.27` and Eclipse Temurin `21.0.11` | No Maven/Gradle dependencies; JDK standard library only |
+| PHP Demo | PHP 5.6 | PHP `5.6.40` and `8.5.10` CLI | No Composer dependencies; PHP standard extensions only |
+| Frontend Demo | A modern browser supporting `URL`, `sessionStorage`, and `crypto.randomUUID()` | Google Chrome `151.0.7922.175` | One HTML file; no framework or build tool |
+
+> Only one Node.js installation is needed. The unified debugging baseline is Node.js `18.20.8` + npm `10.8.2`; the Node.js Demo includes `.nvmrc`, so run `nvm use` in that directory. Validation environments include macOS `15.1` and Docker Linux. The Java Demo uses JDK 11 single-file source launch; the PHP minimum is PHP 5.6 because callback verification uses `hash_equals()`.
 
 ### 1.5 Core Integration Cheat Sheet
 
 **Merchant integration entry points**:
 
-| API | Method | Purpose |
+| Action | Public endpoint | Purpose |
 |---|---|---|
-| Open cashier | `https://cashier.ds.pro/?...` | Open a merchant-backend-generated signed URL and create the order in the cashier. |
-| Webhook | Merchant implements | Receive payment / closure / refund notifications from [DSPay](#term-dspay). |
-| Query orders | POST /dspay/order/query | Query order state when a webhook was not received successfully (HMAC-signed). |
+| List payment methods | `GET /dspay/public/supported-chains` | Retrieve platform-supported networks and tokens; no signature required. |
+| Create order | `POST /dspay/public/order/create` | Server-side signed pre-order; returns `orderNo` and full `checkoutUrl`. |
+| Query order | `POST /dspay/public/order/query` | Retrieve authoritative state/details with HMAC signing. |
+| Receive webhook | Merchant `notifyUrl` | Receive `CLOSED`, `COMPLETED`, and `REFUNDED` notifications. |
 
 > All other operations — sign-up & login, receiving-address management, webhook URL configuration, order reports, refunds, manual fulfillment, key rotation — are performed in the **[DSPay Merchant Portal](https://mcashier.ds.pro/login/) UI** and require no API calls.
-> The user-facing checkout frontend's order-status polling is implemented by the [DSPay](#term-dspay) team; merchants do not need to build it themselves.
+> Loading Checkout details, confirming a payment method, rendering the QR code and polling the user-facing state are internal DSPay interactions. Merchants do not integrate with those endpoints.
+
+### 1.6 Common Public-API Response
+
+```json
+{"code":0,"data":{},"header":{"resultCode":0}}
+```
+
+- Evaluate only the top-level `code`: `0` means business success; any non-zero value means failure.
+- `header.resultCode` duplicates `code` for envelope compatibility and does not need a second check.
+- Business data is in `data`. On failure, read top-level `message`, falling back to `header.message` when absent.
+- HTTP 200 means the request reached the service; it does not prove business success.
 
 ---
 
@@ -238,15 +231,15 @@ This chapter describes the merchant sign-up and authentication model, including 
 Merchants sign in to the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) with an [EVM](#term-evm) wallet via [SIWE](#term-siwe) (signature-based authentication). **The first sign-in automatically provisions a merchant account** — no separate registration step is required.
 
 After signing in, you can obtain:
-- **[merchantNo](#term-merchantno)**: your merchant business identifier (`DSM` prefix, e.g. `DSM1`). Required when generating cashier URLs.
-- **[apiSecret](#term-apisecret)**: your API secret, used to sign cashier URLs and verify incoming webhooks. Displayed in the portal — store it securely.
+- **[merchantNo](#term-merchantno)**: your merchant business identifier (`DSM` prefix, e.g. `DSM1`). Required by public create/query requests.
+- **[apiSecret](#term-apisecret)**: your API secret, used to sign public create/query requests and verify incoming webhooks. Store it securely on the merchant server.
 
 <a id="session-lifetime"></a>
 ### 2.2 Session Lifetime
 
 Portal sessions are valid for 7 days using a sliding window: each interaction auto-extends the session by another 7 days. After 7 days of inactivity, you must sign in again.
 
-> Merchant backend integrations with [DSPay](#term-dspay) (order creation, webhook verification) use [apiSecret](#term-apisecret) signing — they do **not** depend on the [JWT](#term-jwt) session and are unaffected by this limit.
+> Merchant server create/query calls and webhook verification use [apiSecret](#term-apisecret); they do not depend on the Merchant Portal login session.
 
 ### 2.3 ⚠️ Pitfalls (2)
 
@@ -266,50 +259,39 @@ This chapter walks through the full payout configuration: chain/token **whitelis
 <a id="query-supported-chains-tokens"></a>
 ### 3.1 Query Supported Chains / Tokens
 
-Call the public endpoint (no auth, no [merchantNo](#term-merchantno) required):
-
-```
+```http
 GET /dspay/public/supported-chains
 ```
 
-Returns the full platform-wide whitelist of chains and tokens supported by [DSPay](#term-dspay) (9 chains + 18 stablecoins; Aptos/TON not yet enabled; not filtered per-merchant). The returned `networkId` + `address` map 1-to-1 to the `networkId` / `contractAddress` parameters used in order creation.
-
-**Sample response**:
+No parameters or signature.
 
 ```json
-[
-  {
-    "networkId": "evm--1",
-    "chainName": "Ethereum",
-    "chainLogo": "https://assets.ds.pro/server-service-indexer/evm--1/tokens/address--1721282106924.png",
-    "tokens": [
-      {
-        "symbol": "USDT",
-        "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
-        "logoUri": "https://ds-oss-prod.s3.ap-east-1.amazonaws.com/ds-oss-prod/1752200492611b1fe218f-73d8-40e4-a6ae-5a2fc52740a1.png"
-      },
-      {
-        "symbol": "USDC",
-        "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-        "logoUri": "https://ds-oss-prod.s3.ap-east-1.amazonaws.com/ds-oss-prod/1752200934488ce7052b9-831d-4954-8eaa-b76555b0cce8.png"
-      }
-    ]
-  }
-]
+{
+  "code": 0,
+  "data": [{
+    "networkId": "evm--56",
+    "chainName": "BNB Smart Chain",
+    "chainLogoUrl": "https://static.ds.pro/chains/bsc.png",
+    "tokens": [{
+      "symbol": "USDT",
+      "address": "0x55d398326f99059ff775485246999027b3197955",
+      "logoUrl": "https://static.ds.pro/tokens/usdt.png"
+    }]
+  }],
+  "header": {"resultCode": 0}
+}
 ```
 
-**Field reference**:
+`networkId + tokens[].address` may be used in `allowedPaymentMethods`. This is the platform list only. Checkout intersects it with the merchant's enabled receiving-address list and, when provided, the order restriction.
+| Field | Type | Nullable | Description |
+|---|---|---|---|
+| `networkId` | string | No | Platform network identifier; use as `allowedPaymentMethods[].networkId`. |
+| `chainName` | string | No | Network display name. |
+| `chainLogoUrl` | string | Yes | Complete network-logo URL; the field is still returned with `null` when not configured. |
+| `tokens[].symbol` | string | No | Token symbol. |
+| `tokens[].address` | string | No | Contract or mint address; use as `allowedPaymentMethods[].contractAddress`. |
+| `tokens[].logoUrl` | string | Yes | Complete token-logo URL; the field is still returned with `null` when not configured. |
 
-| Field | Type | Description |
-|------|------|------|
-| `networkId` | string | Chain [networkId](#term-networkid) (e.g. `evm--1`). Use this value for the `networkId` parameter when creating orders. |
-| `chainName` | string | Display name (e.g. `Ethereum`). |
-| `chainLogo` | string\|null | Logo URL; null when the DB has no logo configured (front-ends can fall back to a default icon). |
-| `tokens[].symbol` | string | Token symbol (`USDT` / `USDC`). |
-| `tokens[].address` | string | Token contract / mint address. Use this value for the `contractAddress` parameter when creating orders. |
-| `tokens[].logoUri` | string\|null | Token logo URL; null when the DB has no logo configured. |
-
-> Only [USDT](#term-usdt) / [USDC](#term-usdc) are listed. Always defer to the live API response for the authoritative list.
 
 <a id="networkid-cheat-sheet"></a>
 ### 3.2 networkId Cheat Sheet
@@ -331,7 +313,7 @@ Returns the full platform-wide whitelist of chains and tokens supported by [DSPa
 <a id="configure-receiving-addresses"></a>
 ### 3.3 Configure Receiving Addresses
 
-Merchants only need to configure `ENABLED` receiving addresses for the **chains they actually want to accept payments on** — chains you don't intend to support can be skipped. If a [networkId](#term-networkid) has no `ENABLED` address at order-creation time, the request fails with [`50609`](#error-50609) `NO_ENABLED_ADDRESS`.
+Merchants only need to configure `ENABLED` receiving addresses for chains they accept. Pre-order creation does not lock a network, token, or address; DSPay allocates and locks an enabled receiving address only when the customer confirms a payment method in Checkout.
 
 > Receiving addresses are configured at the **chain level** (not per-token): a single address receives every [DSPay](#term-dspay)-supported stablecoin on that chain (e.g. both [USDT](#term-usdt) and [USDC](#term-usdc)).
 
@@ -340,7 +322,7 @@ For each chain you want to accept payments on, configure the following in the [D
 - **The receiving address**
 - **Status** (`ENABLED` / `DISABLED`)
 
-> When an order is created, [DSPay](#term-dspay) picks one of the `ENABLED` addresses for that [networkId](#term-networkid) as the order's receiving address. If there is no `ENABLED` address, order creation fails with [`50609`](#error-50609).
+> A network without an enabled receiving address does not appear as an available Checkout method. If no address remains available at confirmation time, DSPay returns `NO_ENABLED_ADDRESS`.
 
 > Address management (CRUD + enable/disable) is performed entirely in the portal UI.
 
@@ -361,7 +343,7 @@ The [DSPay Merchant Portal](https://mcashier.ds.pro/login/) exposes two critical
 <a id="configure-webhook-url-enable-webhooks"></a>
 ### 3.5 Configure Webhook URL + Enable Webhooks
 
-Configure the webhook URL (the HTTPS endpoint that will receive payment notifications) in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) and enable webhooks.
+Configure the webhook URL that receives payment notifications in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) and enable webhooks. Both HTTP and HTTPS are accepted; HTTPS is recommended in production.
 
 Key settings:
 - **Webhook URL**: your callback endpoint (must be reachable from the public internet).
@@ -387,7 +369,7 @@ You may configure a contact link in the [DSPay Merchant Portal](https://mcashier
 2. **Platform whitelist vs merchant ENABLED addresses**:
    - The platform whitelist (the result of `GET /dspay/public/supported-chains`) defines "which chains [DSPay](#term-dspay) supports."
    - Merchant-level receiving addresses (configured in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/)) define "which address this merchant uses on each chain."
-   At order creation **both conditions must hold**: the [networkId](#term-networkid) is in the whitelist **and** the merchant has an `ENABLED` address for that [networkId](#term-networkid).
+   A Checkout method must be supported by the platform, have an enabled merchant receiving address, and—when the merchant supplied restrictions—appear in `allowedPaymentMethods`.
 
 3. **The webhook toggle is OFF by default**: you must manually enable webhooks in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/), otherwise [DSPay](#term-dspay) will never dispatch a callback. New merchants routinely miss this step — orders succeed, users pay, but the merchant backend never gets notified.
 
@@ -400,208 +382,177 @@ You may configure a contact link in the [DSPay Merchant Portal](https://mcashier
 <a id="chapter-4-creating-your-first-order"></a>
 ## Chapter 4: Creating Your First Order
 
-This chapter explains how a merchant creates the first order through the **Hosted Cashier**, including the suffix mechanism, cashier URL parameters, [HMAC-SHA256](#term-hmac-sha256) signing, timestamp and amount rules, and Java / Node.js / PHP examples.
+This chapter covers server-to-server pre-order creation, request signing, idempotency and Checkout redirect behavior. Merchants call only public APIs and redirect to the returned `checkoutUrl`; DSPay owns all Checkout interactions.
 
 <a id="order-suffix-mechanism-in-depth"></a>
-### 4.1 Order Suffix Mechanism (In Depth)
+### 4.1 Order Suffix Mechanism
 
-**Why does the cashier display `100.001` when the merchant supplied `payAmount=100`?**
+DSPay uses a small fractional suffix to distinguish concurrent orders that share the same network, token, receiving address and original amount.
 
-[DSPay](#term-dspay) uses a **fractional-suffix mechanism** to differentiate concurrent orders of the same amount. If multiple orders are all priced at 100 [USDT](#term-usdt), [DSPay](#term-dspay) appends a unique suffix to each (e.g. `100.001` / `100.002` / `100.003`). The user is expected to pay the exact suffixed amount; [DSPay](#term-dspay) uses the suffix to auto-match the order on-chain.
-
-**Key facts**:
-- The cashier URL carries the merchant's intended amount. The cashier display, webhook, and merchant-query result carry the [DSPay](#term-dspay)-generated amount with the suffix.
-- The payer must send the exact `payAmount` displayed by the cashier; otherwise on-chain detection will not match.
-
-**Input precision requirement**:
-
-DSPay treats supported stablecoins as having **6 decimal places**. Merchants may use at most the first **2 decimal places**; DSPay uses the remaining **4 decimal places** for the order-identification suffix.
-
-- `payAmount` must be greater than 0 and contain at most 2 decimal places: `100`, `100.1`, and `100.12` are valid; `100.123` is invalid.
-- Use a plain decimal string. Never use scientific notation or convert through floating-point types.
-- Avoid unnecessary trailing zeros: send `100.1` instead of `100.10` when possible.
-- More than 2 decimal places causes cashier order creation to fail with [`50612`](#error-50612).
+- `originPayAmount`: amount submitted at creation.
+- `amountSuffix`: matching suffix allocated when the customer confirms a payment method.
+- `payAmount = originPayAmount + amountSuffix`: final amount shown in Checkout and matched on-chain.
+- Create returns only `originPayAmount`; payment method, address and final amount are locked later.
 
 <a id="cashier-integration-flow"></a>
-### 4.2 Cashier Integration Flow
+### 4.2 Standard Integration Flow
 
-Merchants do not select a specific chain/token or call an order-creation endpoint directly. The standard flow is:
+1. Optionally call `GET /dspay/public/supported-chains`.
+2. Generate a unique `outOrderNo` and sign the complete create request on the merchant server.
+3. Call `POST /dspay/public/order/create`.
+4. DSPay creates a `CREATED` order and returns `orderNo`, `checkoutUrl`, `createAt` and `expireAt`.
+5. Redirect the customer to `checkoutUrl`.
+6. The customer chooses a network/token and confirms payment; DSPay locks the method, address, suffix and final amount.
+7. DSPay detects the transfer and sends a webhook; the merchant may query the public order endpoint as fallback.
 
-1. On the merchant backend, prepare `merchantNo`, a unique `outOrderNo`, `payAmount`, and the current `timestamp`.
-2. Calculate the [HMAC-SHA256](#term-hmac-sha256) signature with `apiSecret`.
-3. URL-encode the required fields, signature, and optional product fields and append them to `https://cashier.ds.pro/`.
-4. Return an HTTP 302 redirect, or return the generated cashier URL to the merchant frontend.
-5. The payer opens the cashier and selects the chain and stablecoin. The cashier creates the order and displays the actual suffixed amount.
+> The 5-minute signature window applies only to request replay protection. The independent 10-minute payment deadline begins when the order is created, even if the customer never confirms a payment method.
 
-> Keep `apiSecret` on the merchant backend only. Never send it to a browser/mobile client or include it in the cashier URL.
+### 4.3 Create Order API
 
-**Preconditions**:
+```http
+POST /dspay/public/order/create
+Content-Type: application/json
+```
 
-- Obtain `merchantNo` and `apiSecret` from the [DSPay Merchant Portal](https://mcashier.ds.pro/login/).
-- Configure at least one `ENABLED` receiving address.
-- Keep the merchant server clock synchronized with [NTP](#term-ntp).
+| Field | Type | Required | Signed | Description |
+|---|---|---:|---:|---|
+| `merchantNo` | string | Yes | Yes | DSPay merchant ID; non-empty, maximum string length 32 characters |
+| `outOrderNo` | string | Yes | Yes | Merchant order ID; non-empty, maximum string length 64 characters; unique per merchant and used as the idempotency key |
+| `productPrice` | decimal | No | Yes | Fiat display price; at most 14 integer digits and 6 fractional digits |
+| `productPriceCurrency` | string | No | Yes | Fiat currency; maximum string length 16 characters |
+| `productId` | string | No | Yes | Merchant product ID; maximum string length 64 characters |
+| `attach` | object | No | Yes | Merchant JSON metadata; canonical JSON UTF-8 encoding is limited to 4096 bytes, with a maximum nesting depth of 3 |
+| `payAmount` | decimal | Yes | Yes | Original token amount; minimum `0.0000000001`, at most 12 integer digits and 18 fractional digits |
+| `allowedPaymentMethods` | array | No | Yes | Maximum 50 `{networkId,contractAddress}` entries; absent or empty means no extra restriction |
+| `returnUrl` | string | No | Yes | Optional; redirects when the order reaches `TIMEOUT`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. When absent, sign it as an empty string and retain `returnUrl=` |
+| `successRedirectUrl` | string | No | Yes | Optional; redirects only when the order reaches `COMPLETED`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. When absent, sign it as an empty string and retain `successRedirectUrl=`; Checkout stays on the DSPay success page |
+| `timestamp` | long | Yes | Yes | Unix timestamp in milliseconds; absolute difference from DSPay server time must not exceed 300000 milliseconds (5 minutes) |
+| `signature` | string | Yes | No | Lowercase HMAC-SHA256 hexadecimal string, exactly 64 characters; the field itself is not signed |
 
-<a id="build-cashier-url"></a>
-### 4.3 Build the Cashier URL
-
-Cashier base URL:
+Each `allowedPaymentMethods[]` entry requires a non-empty `networkId` and `contractAddress`. `networkId` has a maximum string length of 64 characters, while `contractAddress` has a maximum string length of 128 characters. Together they must identify a payment method returned by `supported-chains`. When restrictions are supplied, available methods are:
 
 ```text
-https://cashier.ds.pro/
+platform list ∩ merchant enabled addresses ∩ allowedPaymentMethods
 ```
 
-After signing, URL-encode the parameters as query parameters:
+Merchant order is preserved. Without restrictions, receiving-address creation time determines display order.
+
+```json
+{
+  "merchantNo": "DSM2080260022215368706",
+  "outOrderNo": "ORDER-20260821-001",
+  "productPrice": "100.00",
+  "productPriceCurrency": "USD",
+  "productId": "PROD-001",
+  "attach": {"customerId":"CUST-1001"},
+  "payAmount": "100.00",
+  "allowedPaymentMethods": [{"networkId":"evm--56","contractAddress":"0x55d398326f99059ff775485246999027b3197955"}],
+  "returnUrl": "https://merchant.example.com/orders/ORDER-20260821-001",
+  "successRedirectUrl": "https://merchant.example.com/pay/success",
+  "timestamp": 1787292000000,
+  "signature": "a1b2c3d4..."
+}
+```
+
+Response:
+
+```json
+{
+  "code": 0,
+  "data": {
+    "orderNo": "1949695024925671424",
+    "outOrderNo": "ORDER-20260821-001",
+    "checkoutUrl": "https://cashier.ds.pro/checkout/1949695024925671424",
+    "status": "CREATED",
+    "originPayAmount": "100.00",
+    "createAt": 1787292001000,
+    "expireAt": 1787292601000
+  },
+  "header": {"resultCode": 0}
+}
+```
+
+Create does not return network, token, final amount, receiving address or QR payload. They do not exist until Pay Now; Checkout generates the QR code client-side.
+
+### 4.4 Signing and Idempotency
+
+Create-signature field order is fixed. Optional fields remain as `key=` when absent:
 
 ```text
-https://cashier.ds.pro/?merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=99.99&timestamp=1717689600000&signature=7de3fafc...
+merchantNo -> outOrderNo -> productPrice -> productPriceCurrency -> productId
+-> attach -> payAmount -> allowedPaymentMethods -> returnUrl
+-> successRedirectUrl -> timestamp
 ```
 
-> The example `timestamp` and `signature` only demonstrate the format. Generate the real URL on the merchant backend at request time; it remains valid for 5 minutes.
-
-#### Cashier URL Parameters
-
-| Field | Required | Constraint | Description |
-|------|------|------|------|
-| `merchantNo` | Yes | non-empty | Merchant identifier; configure it only on the merchant backend. |
-| `outOrderNo` | Yes | non-blank, ≤64 chars | Merchant external order ID; signed and case-sensitive. Use exactly `outOrderNo` and a unique value for each merchant order. |
-| `payAmount` | Yes | greater than 0; at most 2 decimal places | Stablecoin amount excluding the suffix. Use a plain decimal string; scientific notation is forbidden. |
-| `timestamp` | Yes | current time ±5 minutes | Unix timestamp in milliseconds; prevents replay of old links. |
-| `signature` | Yes | lowercase HMAC-SHA256 hex | Calculate it as described in [§4.4](#signature-canonical-string). |
-| `productPrice` | No | optional | Product price, used only for recording and display. |
-| `productPriceCurrency` | No | optional | Product price currency such as `USD`, `CNY`, or `EUR`. |
-| `productId` | No | ≤64 chars | Merchant product ID; echoed in callbacks. |
-
-Merchants do not pass `networkId` or `contractAddress`. The payer selects the chain/token in the cashier, which creates the order using the merchant's configured receiving addresses.
-
-#### After the URL Opens
-
-- The cashier verifies `timestamp` and `signature`.
-- The payer selects the chain and stablecoin.
-- The cashier creates the order and displays the receiving address, QR code, expiry time, and **actual payable amount including the suffix**.
-- The merchant receives state changes through Chapter 5 webhooks. If a webhook was not received successfully, query the order using [§5.11](#merchant-active-order-query-webhook-fallback).
-
-Merchants do not parse the cashier's internal order-creation response and must not construct signatures in the frontend. Complete implementations are available in [Java §4.8](#java-end-to-end-demo), [Node.js §4.9](#node.js-end-to-end-demo), and the [PHP demo](../Demo/back-end/php/README.md).
-
-<a id="signature-canonical-string"></a>
-### 4.4 Signature Canonical String
-
-Concatenate the cashier signing parameters in the **fixed order** below. Sign the original values before URL encoding, then encode them as cashier URL query parameters. The signing set is exactly 4 fields:
-
-```
-merchantNo={merchantNo}&outOrderNo={outOrderNo}&payAmount={payAmount}&timestamp={timestamp}
+```text
+signature = lowercaseHex(HMAC_SHA256(apiSecret, canonical UTF-8 string))
 ```
 
-**Example**:
-```
-merchantNo=DSM1&outOrderNo=MY-ORDER-001&payAmount=99.99&timestamp=1717689600000
-```
+- Trim strings; format decimals without scientific notation.
+- Canonicalize `attach` recursively by sorted object keys and compact JSON; normalize numeric zero to `0` and remove insignificant trailing zeros.
+- Preserve `allowedPaymentMethods` order, remove duplicates, join each entry as `networkId|contractAddress`, comma-separated; lowercase `0x` addresses.
 
-> ⚠️ **Order Sensitive**
->
-> HMAC-SHA256 hashes the **byte sequence**; field-order mismatch → different bytes → different hash → verification failure ([`50613`](#error-50613)). **The merchant backend MUST concatenate fields in the exact order above.**
->
-> | Position | Field | Empty handling |
-> |---|---|---|
-> | 1 | `merchantNo` | non-empty, concatenated as-is |
-> | 2 | `outOrderNo` | required and non-blank; concatenate as-is; field name is case-sensitive |
-> | 3 | `payAmount` | `BigDecimal.toPlainString()`, no scientific notation |
-> | 4 | `timestamp` | millisecond long, concatenated as-is |
->
-> Sign the original field values before URL encoding. Do not sign the full URL or the URL-encoded `%xx` representation.
+`merchantNo + outOrderNo` is the idempotency key. An identical retry returns the original `orderNo/checkoutUrl/expireAt`. A retry with different business fields returns code `40901` with “Merchant order number has already been used”. Always reuse the original `outOrderNo` when retrying.
 
-> **Important**:
-> - `outOrderNo` is required and must not be blank. Include it in both the signature and cashier URL. Field names are case-sensitive: use `outOrderNo`, not `outOrderNO`.
-> - `merchantNo` / `outOrderNo` / `payAmount` / `timestamp` constitute the minimal signing set (anti-spoofing, anti-order-id-substitution, anti-amount-tampering, anti-replay).
-> - `productPrice` / `productPriceCurrency` / `productId` are optional display fields and are not signed. If their integrity matters, compare them with local order data after webhook verification.
-> - The payer selects the chain/token in the cashier, so merchants do not pass or sign `networkId` / `contractAddress`.
+### 4.5 Checkout Behavior and Redirects
 
-### 4.5 Signature Algorithm
+- Use the returned `checkoutUrl`; do not build it from business parameters.
+- Pay Now locks once and does not extend the 10-minute payment deadline.
+- In multiple tabs, the first successful Pay Now wins; later calls return the same payment data.
+- Timed-out/closed links cannot restart an order.
+- Checkout links cannot be viewed 180 days after order creation; this does not change the order state.
 
-[HMAC-SHA256](#term-hmac-sha256), output is **lowercase hex** (same as the webhook signature).
+| State | Redirect behavior |
+|---|---|
+| `COMPLETED` with `successRedirectUrl` | Redirect to `successRedirectUrl` |
+| `COMPLETED` without it | Stay on the DSPay success page; never fall back to `returnUrl` |
+| Order reaches `TIMEOUT` and `returnUrl` is configured | Redirect to `returnUrl` |
+| Order reaches `TIMEOUT` without `returnUrl` | Stay on the DSPay timeout page |
+| Any other case | Do not redirect through `returnUrl` |
 
-> **Important**: use the `apiSecret` string **directly as the HMAC key** — `secret.getBytes(UTF_8)` — **do NOT Base64-decode first**. Base64Url is only the storage encoding of the key; [HMAC-SHA256](#term-hmac-sha256) is encoding-agnostic about the key byte sequence.
-
-<a id="timestamp-window"></a>
-### 4.6 Timestamp Window
-
-`timestamp` (milliseconds) must be within **±5 minutes** of the [DSPay](#term-dspay) server clock; otherwise the cashier rejects the link with [`50614`](#error-50614) `ORDER_TIMESTAMP_EXPIRED`. We strongly recommend enabling [NTP](#term-ntp) on the merchant server.
-
-### 4.7 Amount String Serialization
-
-The signing field `payAmount` must be sent as a **plain numeric string** (no scientific notation):
-
-| Language | Method |
-|------|------|
-| Java | Construct `BigDecimal` from a string and output with `toPlainString()`. |
-| Node.js | Preserve the original string and validate at most 2 decimal places; do not convert through `number` / `toFixed()`. |
-| PHP | Keep `payAmount` as a string, call `trim()`, and use it directly; never convert it to `float`. Use `preg_match()` to validate positive plain-decimal format and at most 2 decimal places; see the [PHP demo](../Demo/back-end/php/README.md). |
-
-> Otherwise `1e2` and `100` produce different signed bytes and signature verification fails ([`50613`](#error-50613)).
+Redirects are navigation only, never proof of payment. Query DSPay server-to-server before fulfillment.
 
 <a id="java-end-to-end-demo"></a>
-### 4.8 Java End-to-End Demo
+### 4.6 Java End-to-End Demo
 
-The runnable Java demo is maintained as a single source of truth under [`Demo/back-end/java`](../Demo/back-end/java/README.md). The SDK intentionally does not duplicate its source code.
+The maintained [Java Demo](../Demo/back-end/java/README.md) builds and canonicalizes the complete request on the merchant server, calls the public create endpoint, checks the top-level `code`, redirects to `checkoutUrl`, verifies raw-body webhooks and performs signed public queries.
 
-**Hosted Cashier flow**:
+- [`DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
+- [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh)
 
-1. Generate `outOrderNo` and `timestamp` locally.
-2. Sign `merchantNo → outOrderNo → payAmount → timestamp` locally.
-3. URL-encode the signed fields and optional product fields into the cashier URL.
-4. Return an HTTP 302 redirect to the cashier, where the payer selects the chain/token and completes order creation.
+<a id="nodejs-end-to-end-demo"></a>
+### 4.7 Node.js / PHP Demos
 
-> `outOrderNo` must be non-blank and used in both the signature and cashier URL. Use a unique value for each merchant order.
+- [Node.js Demo guide](../Demo/back-end/nodejs/README.md)
+- [Node.js server](../Demo/back-end/nodejs/src/server.js)
+- [Node.js signer](../Demo/back-end/nodejs/src/signer.js)
+- [PHP Demo guide](../Demo/back-end/php/README.md)
 
-Canonical files:
+### 4.8 Create-Request Triage
 
-- [Java demo README](../Demo/back-end/java/README.md)
-- [Runnable source: `DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
-- [Start script](../Demo/back-end/java/start.sh) / [stop script](../Demo/back-end/java/stop.sh)
+| Code | Cause | Check |
+|---|---|---|
+| `40001` | Parameter validation failed | Lengths, decimal format, URLs, and payment-method array |
+| `40901` | Merchant order number has already been used | Same `outOrderNo` was retried with changed business fields |
+| `50501` | Merchant not found | `merchantNo` |
+| `50503` | API secret disabled | Key status in Merchant Portal |
+| `50609` | No enabled receiving address | Enable an address for an eligible network |
+| `50613` | Invalid signature | Field order, empty fields, JSON/array canonicalization, and key |
+| `50614` | Expired timestamp | NTP and the five-minute window |
 
-<a id="node.js-end-to-end-demo"></a>
-### 4.9 Node.js End-to-End Demo
+### 4.9 ⚠️ Pitfalls
 
-The runnable Node.js demo is maintained as a single source of truth under [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). The SDK intentionally does not duplicate its source code.
-
-**Hosted Cashier flow**:
-
-1. Generate `outOrderNo` and `timestamp` locally.
-2. Sign `merchantNo → outOrderNo → payAmount → timestamp` locally.
-3. Build the cashier URL with `URLSearchParams`.
-4. Return an HTTP 302 redirect to the cashier, where the payer selects the chain/token and completes order creation.
-
-> `outOrderNo` must be non-blank and used in both the signature and cashier URL. Use a unique value for each merchant order.
-
-Canonical files:
-
-- [Node.js demo README](../Demo/back-end/nodejs/README.md)
-- [HTTP server and cashier URL builder: `server.js`](../Demo/back-end/nodejs/src/server.js)
-- [Signing and callback verification: `signer.js`](../Demo/back-end/nodejs/src/signer.js)
-- [Package scripts](../Demo/back-end/nodejs/package.json)
-
-### 4.10 Signature-Failure Triage Table
-
-| Error code | Root cause | Triage direction |
-|--------|------|----------|
-| [`50613`](#error-50613) `ORDER_SIGNATURE_INVALID` | No [apiSecret](#term-apisecret) configured for the merchant | Enable webhooks in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (auto-generates [apiSecret](#term-apisecret)) or run `regenerate` from the portal. |
-| [`50613`](#error-50613) `ORDER_SIGNATURE_INVALID` | Signature computed incorrectly | Inspect the canonical-string field order, BigDecimal serialization, and [apiSecret](#term-apisecret) accuracy. |
-| [`50614`](#error-50614) `ORDER_TIMESTAMP_EXPIRED` | Timestamp outside ±5 minutes | Check server clock sync ([NTP](#term-ntp)). |
-
-### 4.11 ⚠️ Pitfalls (5)
-
-1. **BigDecimal must use `toPlainString()`**: `new BigDecimal("1E+2").toString()` emits `1E+2`, while `toPlainString()` emits `100`. Any mismatch in the canonical string → [`50613`](#error-50613). `payAmount` participates in the signature and must remain a plain decimal string.
-
-2. **Node.js amount fields must be strings**: `payAmount` (in the signature) must be a string literal like `'99.99'` or use `Big.js`. Never use JS `number` — it drifts into scientific notation for values beyond `Number.MAX_SAFE_INTEGER` or for very small decimals, breaking the canonical string.
-
-3. **±5-minute timestamp window**: the server must run [NTP](#term-ntp). Drift beyond the window → [`50614`](#error-50614). Docker containers: verify the guest clock is synced to the host.
-
-4. **Order-suffix precision convention**: the cashier's final `payAmount` includes the suffix (e.g. `100.001`), **not** the `100` in the merchant URL. Stablecoins are treated as 6-decimal tokens: merchants submit at most 2 decimal places and DSPay uses the remaining 4 for the suffix. More than 2 decimal places returns [`50612`](#error-50612). The payer must use the cashier-displayed amount; merchant reconciliation uses webhook or active-query results.
-
-5. **Signing field set + order sensitivity**: `merchantNo` / `outOrderNo` / `payAmount` / `timestamp` participate in the signature, **concatenated in this exact order**. HMAC-SHA256 hashes the byte sequence, so **any field-order mismatch → signature mismatch → [`50613`](#error-50613)**. `outOrderNo` is required and must appear in both the signature and cashier URL. Optional product fields may be added to the URL but are not signed; the payer selects the chain/token in the cashier. Merchants must keep `outOrderNo` unique.
+1. Every create business field is signed, including product data, `attach`, payment restrictions, and both redirect URLs. Keep absent optional fields as empty keys.
+2. Never serialize money through binary floating point; use plain decimal strings.
+3. The signature window is not the order lifetime.
+4. `CREATED` does not imply that a payment method has already been locked.
+5. Idempotent retries must not change business fields.
+6. Never fulfill from a browser redirect; trust only a verified `COMPLETED` webhook or server-to-server query.
 
 ---
 
 [↑ Back to Table of Contents](#table-of-contents)
+
 
 <a id="chapter-5-handling-webhooks"></a>
 ## Chapter 5: Handling Webhooks
@@ -624,8 +575,8 @@ This chapter covers the webhook handling pipeline: the **order state machine**, 
 
 | State | Meaning | Webhook? | Auto-detect? | Manual supplement? |
 |------|------|-----------|---------|-----------|
-| `CREATED` | Awaiting payment (10min countdown) | ❌ Not sent | ✅ Scanned | ✅ |
-| `TIMEOUT` | 10min elapsed with no payment (still waiting) | ❌ Not sent | ✅ Scanned | ✅ |
+| `CREATED` | Created; payment method may be unlocked or locked | ❌ Not sent | Scanned only when payment fields are complete | Allowed only when payment fields are complete |
+| `TIMEOUT` | 10min elapsed without completion | ❌ Not sent | Scanned only when payment fields are complete | Allowed only when payment fields are complete |
 | `CLOSED` | 40min elapsed; system closed the order | ✅ `CLOSED` sent | ❌ **Stopped** | ✅ (reopens, `reopened=true`) |
 | `COMPLETED` | On-chain settlement / supplement complete | ✅ `COMPLETED` sent | — | — |
 | `REFUNDED` | Merchant refund succeeded | ✅ `REFUNDED` sent | — | — |
@@ -636,7 +587,7 @@ This chapter covers the webhook handling pipeline: the **order state machine**, 
 
 1. **`TIMEOUT` does not emit a webhook**: the 10-minute transition only advances order state. The order continues waiting for on-chain settlement and auto-detection; its eventual state is either CLOSED (40min) or COMPLETED (on-chain / supplement). Do not rely on a webhook to detect TIMEOUT.
 
-2. **Auto-detection stops once `CLOSED`**: the [DSPay](#term-dspay) auto-detection job only scans orders in `CREATED` / `TIMEOUT`. Once an order transitions to `CLOSED`, subsequent on-chain settlements are **not** auto-confirmed — the merchant must trigger **manual supplement** from the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (the `reopened=true` path).
+2. **Unlocked orders are excluded from detection and supplement**: DSPay scans only `CREATED` / `TIMEOUT` orders with complete payment fields. Supplementing an unlocked order is rejected. Auto-detection stops after `CLOSED`; later settlements require manual review and supplement in the Merchant Portal.
 
 3. **Supplement does not require amount match**: auto-detection demands the on-chain amount match `payAmount` exactly (`compareTo == 0`); manual supplement does not check amount, it only records the difference (`amountDiff = actual − payable`) — the merchant decides whether to accept.
 
@@ -678,6 +629,7 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
 {
   "orderNo": "DS202406071234567890",
   "outOrderNo": "MY-ORDER-20260715-001",
+  "attach": {"customerId": "CUST-1001", "source": "web"},
   "eventType": "COMPLETED",
   "status": "COMPLETED",
   "payAmount": "100.001",
@@ -691,6 +643,7 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
   "txHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
   "tokenSymbol": "USDT",
   "contractAddress": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+  "receivingAddress": "0x1111111111111111111111111111111111111111",
   "networkId": "evm--1",
   "chainName": "Ethereum",
   "reopened": false,
@@ -700,27 +653,29 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
 
 **Field reference**:
 
-| Field | Type | Always returned | Description |
-|------|------|------|------|
-| `orderNo` | string | Yes | Order ID, e.g. `DS2024...` |
-| `outOrderNo` | string | Yes | Merchant external order ID (required at order creation and echoed back). |
-| `eventType` | string | Yes | Event type: `CLOSED` / `COMPLETED` / `REFUNDED`. |
-| `status` | string | Yes | Current order status enum. |
-| `payAmount` | string\|null | Yes | Actual paid amount (suffix included; Decimal string). |
-| `originPayAmount` | string\|null | Yes | Product price (suffix excluded). |
-| `amountSuffix` | string\|null | Yes | Order-identification suffix (used for exact on-chain matching). |
-| `actualReceivedAmount` | string\|null | Yes | Actual settled amount (after gas deductions). |
-| `actualUsdAmount` | string\|null | Yes | Actual received USD value (locked at completion: CHAIN_DETECTION ≈ usdAmount; SUPPLEMENT = actual × supplement-time price). |
-| `refundAmount` | string\|null | Yes | Refund token amount (non-null only for REFUNDED events). |
-| `refundUsdAmount` | string\|null | Yes | Refund USD value (locked at refund = refundAmount × refund-time price). |
-| `refundTxHash` | string\|null | Yes | Refund transaction hash (non-null only for REFUNDED events). |
-| `txHash` | string\|null | Yes | On-chain transaction hash. |
-| `tokenSymbol` | string | Yes | Token symbol, e.g. `USDT`. |
-| `contractAddress` | string\|null | Yes | Token contract address. null for native coins (e.g. ETH/BNB/SOL); for tokens (e.g. USDT/USDC) the contract address on that chain. Matches the `contractAddress` parameter used at order creation. |
-| `networkId` | string | Yes | Network ID, e.g. `evm--1`. |
-| `chainName` | string | Yes | Chain display name. **Identical** to the `chainName` field returned by [`GET /dspay/public/supported-chains`](#query-supported-chains-tokens) (e.g. `Ethereum` / `BNB Chain` / `Polygon` / `Solana`) — merchants can display it directly in their backend. |
-| `reopened` | boolean | Yes | Whether this is a merchant-initiated manual-supplement reopen after `CLOSED`. |
-| `timestamp` | long | Yes | [DSPay](#term-dspay)-side send timestamp (ms). |
+| Field | Type | Always returned | Nullable | Description |
+|------|------|-----------------|----------|------|
+| `orderNo` | string | Yes | No | Order ID, e.g. `DS2024...`. |
+| `outOrderNo` | string | Yes | No | Merchant external order ID (required at order creation and echoed back). |
+| `attach` | object | Conditional | No | Echoed unchanged when supplied at creation; otherwise omitted rather than returned as `null`. |
+| `eventType` | string | Yes | No | Event type: `CLOSED` / `COMPLETED` / `REFUNDED`. |
+| `status` | string | Yes | No | Current order status enum. |
+| `payAmount` | string | Yes | Yes | Final amount due, including the suffix (Decimal string); `null` if the order closes before payment confirmation. |
+| `originPayAmount` | string | Yes | No | Original amount submitted by the merchant at order creation, excluding the suffix. |
+| `amountSuffix` | string | Yes | No | Order-identification suffix; `"0"` when no suffix is added. |
+| `actualReceivedAmount` | string | Yes | Yes | Actual received amount; `null` until payment is confirmed. |
+| `actualUsdAmount` | string | Yes | Yes | Actual received USD value; `null` until payment is confirmed. |
+| `refundAmount` | string | Yes | Yes | Refund token amount; populated only for `REFUNDED`, otherwise `null`. |
+| `refundUsdAmount` | string | Yes | Yes | Refund USD value; populated only for `REFUNDED`, otherwise `null`. |
+| `refundTxHash` | string | Yes | Yes | Refund transaction hash; populated only for `REFUNDED`, otherwise `null`. |
+| `txHash` | string | Yes | Yes | On-chain transaction hash; `null` until payment is confirmed. |
+| `tokenSymbol` | string | Yes | Yes | Selected token symbol, e.g. `USDT`; `null` if the order closes before payment confirmation. |
+| `contractAddress` | string | Yes | Yes | Selected token contract address; `null` before payment confirmation or for a native coin. |
+| `receivingAddress` | string | Yes | Yes | Merchant receiving address locked after payment confirmation; `null` before confirmation. |
+| `networkId` | string | Yes | Yes | Selected network ID, e.g. `evm--1`; `null` if the order closes before payment confirmation. |
+| `chainName` | string | Yes | Yes | Selected chain display name; `null` if the order closes before payment confirmation. When present, it matches [`GET /dspay/public/supported-chains`](#query-supported-chains-tokens). |
+| `reopened` | boolean | Yes | No | Whether this is a merchant-initiated manual-supplement reopen after `CLOSED`. |
+| `timestamp` | long | Yes | No | [DSPay](#term-dspay)-side send timestamp (Unix milliseconds). |
 
 > **Amount-field notes (§5.1.5)**:
 > - `originPayAmount`: product price — identical to what the merchant supplied at order creation.
@@ -757,6 +712,10 @@ public class DspaySignatureVerifier {
      * @param secret    The apiSecret string (used directly; do NOT Base64-decode).
      */
     public static boolean verify(String payload, String signature, String secret) throws Exception {
+        if (payload == null || secret == null || signature == null
+                || !signature.matches("(?i)^[0-9a-f]{64}$")) {
+            return false;
+        }
         Mac mac = Mac.getInstance("HmacSHA256");
         // Critical: use secret.getBytes directly — do NOT Base64-decode.
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
@@ -784,6 +743,9 @@ public class DspaySignatureVerifier {
 const crypto = require('crypto');
 
 function verifySignature(payload, signature, secret) {
+    if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/i.test(signature)) {
+        return false;
+    }
     // Critical: use secret directly as the key — do NOT Base64-decode.
     const expected = crypto
         .createHmac('sha256', secret)
@@ -813,7 +775,10 @@ public class ReplayAttackGuard {
      */
     public static boolean isFresh(long timestamp) {
         long now = System.currentTimeMillis();
-        return Math.abs(now - timestamp) < TOLERANCE_MS;
+        // Avoid Math.abs(now - timestamp): Long.MIN_VALUE can overflow and bypass validation.
+        return timestamp >= 0
+                && timestamp <= now + TOLERANCE_MS
+                && now - timestamp <= TOLERANCE_MS;
     }
 }
 ```
@@ -831,7 +796,7 @@ A single order emits at most three webhook event types. Retries reuse the same `
 
 ```sql
 CREATE TABLE notify_processed (
-    order_no   VARCHAR(32) NOT NULL,
+    order_no   VARCHAR(64) NOT NULL,
     event_type VARCHAR(32) NOT NULL,
     processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (order_no, event_type)
@@ -839,9 +804,11 @@ CREATE TABLE notify_processed (
 ```
 
 ```java
-public void handleNotify(NotifyPayload payload) {
+@Transactional(rollbackFor = Exception.class)
+public void handleNotify(NotifyPayload payload) throws Exception {
     try {
-        // INSERT IGNORE: a duplicate insert returns affected rows = 0
+        // The idempotency row and fulfillment must share one DB transaction.
+        // INSERT IGNORE: a duplicate insert returns affected rows = 0.
         int affected = jdbc.update(
             "INSERT IGNORE INTO notify_processed (order_no, event_type) VALUES (?, ?)",
             payload.getOrderNo(), payload.getEventType()
@@ -850,10 +817,10 @@ public void handleNotify(NotifyPayload payload) {
             // Duplicate callback — ACK immediately to stop DSPay from retrying.
             return;
         }
-        // First-time handling — execute business logic.
+        // On failure, the transaction rolls back both fulfillment and the idempotency row.
         fulfillOrder(payload.getOrderNo());
     } catch (Exception e) {
-        // Business exception — do NOT ACK; let DSPay retry.
+        // Propagate the error; do not return SUCCESS.
         throw e;
     }
 }
@@ -862,15 +829,25 @@ public void handleNotify(NotifyPayload payload) {
 #### Recommended Implementation B — Redis SETNX
 
 ```java
-public void handleNotify(NotifyPayload payload) {
+public void handleNotify(NotifyPayload payload) throws Exception {
     String key = "notify:" + payload.getOrderNo() + ":" + payload.getEventType();
-    boolean firstTime = redis.opsForValue().setIfAbsent(key, "1", Duration.ofMinutes(30));
+    // Use a short PROCESSING TTL so a crashed worker does not block retries for days.
+    boolean firstTime = redis.opsForValue()
+            .setIfAbsent(key, "PROCESSING", Duration.ofMinutes(5));
     if (!firstTime) {
         // Duplicate callback — ACK immediately to stop DSPay from retrying.
         return;
     }
-    // First-time handling — execute business logic.
-    fulfillOrder(payload.getOrderNo());
+    try {
+        // First-time handling — execute business logic.
+        fulfillOrder(payload.getOrderNo());
+        // Preserve DONE beyond the complete retry window; at least 30 days is recommended.
+        redis.opsForValue().set(key, "DONE", Duration.ofDays(30));
+    } catch (Exception e) {
+        // Release the reservation so the next DSPay retry can process it again.
+        redis.delete(key);
+        throw e;
+    }
 }
 ```
 
@@ -929,7 +906,7 @@ Example below assumes the first attempt occurs at `D0 00:00:00`, every request r
 >
 > 🔁 **Idempotency still required** (see [§5.8](#idempotency)): any single attempt may succeed on the merchant side but fail to ACK on the [DSPay](#term-dspay) side — always de-duplicate on `orderNo + eventType`.
 >
-> 🚫 **Old-event cancellation**: if the order's state advances mid-retry (for example, a `CLOSED` order is supplemented to `COMPLETED`), DSPay stops delivering the old event to avoid a conflict between its event type and the latest order state. The new-state event is sent separately.
+> 🚫 **Previous-event cancellation**: if the order state changes mid-retry (for example, a `CLOSED` order is supplemented to `COMPLETED`), DSPay stops delivering the previous event and sends the new-state event separately.
 
 ### 5.10 Event Types
 
@@ -947,209 +924,71 @@ Example below assumes the first attempt occurs at `D0 00:00:00`, every request r
 <a id="merchant-active-order-query-webhook-fallback"></a>
 ### 5.11 Merchant-Initiated Order Query (Webhook Fallback)
 
-If a webhook is not received successfully, the merchant can query the latest order state through this endpoint. This is a **fallback for missed webhooks**, not a replacement for webhooks. Poll only when needed, based on local order state and a backoff policy; avoid continuous high-frequency requests.
-
-#### Endpoint
-
 ```http
-POST /dspay/order/query
-Content-Type: application/json
+POST /dspay/public/order/query
 ```
 
-Example full URL:
+#### Request fields
+
+| Field | Required | Signed | Constraints and meaning |
+|---|---:|---:|---|
+| `merchantNo` | Yes | Yes | Non-empty merchant ID; maximum 32 characters |
+| `orderNo` | Conditional | When non-empty | At least one of `orderNo/outOrderNo`; maximum 64 characters |
+| `outOrderNo` | Conditional | When non-empty | At least one of `orderNo/outOrderNo`; maximum 64 characters |
+| `timestamp` | Yes | Yes | Unix milliseconds; absolute server-time difference must not exceed 300000 ms |
+| `signature` | Yes | No | Lowercase HMAC-SHA256 hexadecimal string, exactly 64 characters |
+
+When both identifiers are present, the query uses an AND match. Sign only non-empty optional identifier fields, in this order:
 
 ```text
-https://wallet.ds.pro/dspay/order/query
+merchantNo -> orderNo(if present) -> outOrderNo(if present) -> timestamp
 ```
 
-#### Request Fields
-
-| Field | Type | Required | Constraints and description |
-|------|------|----------|-----------------------------|
-| `merchantNo` | string | Yes | Merchant ID, up to 32 characters; included in the signature |
-| `orderNo` | string | Conditional | DSPay order ID, up to 64 characters; at least one of `orderNo` / `outOrderNo` is required; included in the signature |
-| `outOrderNo` | string | Conditional | Merchant external order ID, up to 128 characters; at least one of `orderNo` / `outOrderNo` is required; included in the signature; may match multiple orders |
-| `timestamp` | long | Yes | Current Unix timestamp in milliseconds; must be within ±5 minutes of server time |
-| `signature` | string | Yes | Lowercase hex HMAC-SHA256 signature of the canonical string, up to 128 characters |
-
-Query rules:
-
-- Only orders owned by the supplied `merchantNo` are returned.
-- With one order ID supplied, the endpoint performs an exact match on that field.
-- With both supplied, it performs an exact `orderNo AND outOrderNo` match.
-- An omitted optional field still keeps its key in the canonical string, with an empty value.
-- Results are sorted by `createAt` descending. No match returns an empty array `[]`, not `ORDER_NOT_FOUND`.
-
-#### Query Signature
-
-Fixed field order:
+Example when querying by `orderNo`:
 
 ```text
-merchantNo → orderNo → outOrderNo → timestamp
+merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=1787292500000
+signature = lowercaseHex(HMAC_SHA256(apiSecret, canonical UTF-8 string))
 ```
 
-Canonical string:
+Public APIs use the common envelope. Top-level `code = 0` means success; `data` is the order array (`data=[]` when not found).
 
-```text
-merchantNo={merchantNo}&orderNo={orderNo}&outOrderNo={outOrderNo}&timestamp={timestamp}
-```
+| Field | Always | Meaning |
+|---|---:|---|
+| `orderNo` | Yes | DSPay order number |
+| `outOrderNo` | Yes | Merchant order number |
+| `createAt` | Yes | Creation time, Unix milliseconds |
+| `status` | Yes | Current order state |
+| `originPayAmount` | Yes | Original amount submitted at creation |
+| `amountSuffix` | Yes | Matching suffix; `0` before Pay Now or when unused |
+| `payAmount` | No | Final amount after Pay Now |
+| `networkId` | No | Locked network |
+| `tokenAddress` | No | Locked contract or mint address |
+| `receivingAddress` | No | Merchant receiving address locked for the order |
+| `payerAddress` | No | Detected payer address |
+| `txHash` | No | Payment transaction hash |
+| `txLink` | No | Payment transaction explorer link |
+| `productPrice` | No | Fiat product price supplied at creation |
+| `productPriceCurrency` | No | Product-price currency |
+| `productId` | No | Merchant product ID |
+| `attach` | No | Original attached JSON |
+| `actualReceivedAmount` | No | Actual token amount received |
+| `paidSource` | No | `CHAIN_DETECTION` or `SUPPLEMENT` |
+| `paidAt` | No | Detection time, Unix milliseconds |
+| `completedAt` | No | Completion time, Unix milliseconds |
+| `refundTxHash` | No | Refund transaction hash |
+| `refundTxLink` | No | Refund transaction explorer link |
+| `refundAmount` | No | Refunded token amount |
+| `refundAt` | No | Refund completion time |
+| `refundRemark` | No | Refund remark |
 
-Example querying only by `outOrderNo`:
+Internal USD snapshots, `amountDiff`, `statusDesc` and `tokenSymbol` are not returned.
 
-```text
-merchantNo=DSM1&orderNo=&outOrderNo=MY-ORDER-20260715-001&timestamp=1717689600000
-```
-
-Signature:
-
-```text
-signature = hex_lowercase(HMAC_SHA256(apiSecret UTF-8 bytes, canonical UTF-8 bytes))
-```
-
-> If `orderNo` / `outOrderNo` is null, empty, or whitespace-only, normalize its signature value to an empty string. Otherwise call `trim()` first. Use `apiSecret` directly as the UTF-8 HMAC key; do not Base64-decode it. Generate a fresh `timestamp` and `signature` for every poll.
-
-#### Minimal Node.js 18+ Demo
-
-```js
-const crypto = require('node:crypto');
-
-const DSPAY_BASE_URL = 'https://wallet.ds.pro';
-const API_SECRET = 'your-apiSecret';
-
-async function queryOrders() {
-    // At least one of orderNo / outOrderNo must be non-empty.
-    // This example queries by the merchant external order ID.
-    const params = {
-        merchantNo: 'DSM1',
-        orderNo: '',
-        outOrderNo: 'MY-ORDER-20260715-001',
-    };
-
-    const opt = (value) =>
-        value == null || String(value).trim() === '' ? '' : String(value).trim();
-    const timestamp = Date.now();
-    const canonical = [
-        `merchantNo=${params.merchantNo}`,
-        `orderNo=${opt(params.orderNo)}`,
-        `outOrderNo=${opt(params.outOrderNo)}`,
-        `timestamp=${timestamp}`,
-    ].join('&');
-    const signature = crypto
-        .createHmac('sha256', API_SECRET)
-        .update(canonical, 'utf8')
-        .digest('hex');
-
-    const response = await fetch(`${DSPAY_BASE_URL}/dspay/order/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            ...params,
-            orderNo: opt(params.orderNo),
-            outOrderNo: opt(params.outOrderNo),
-            timestamp,
-            signature,
-        }),
-    });
-
-    const text = await response.text();
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text}`);
-    }
-
-    const orders = JSON.parse(text);
-    if (!Array.isArray(orders)) {
-        throw new Error(`Unexpected response: ${text}`);
-    }
-    console.log(JSON.stringify(orders, null, 2));
-    return orders;
-}
-
-queryOrders().catch(console.error);
-```
-
-#### Response Example
-
-The endpoint returns an order array directly:
-
-```json
-[
-  {
-    "orderNo": "DS00000120260702000001",
-    "outOrderNo": "MY-ORDER-20260715-001",
-    "createAt": 1717689600000,
-    "status": "COMPLETED",
-    "statusDesc": "已完成",
-    "payAmount": 100.001,
-    "originPayAmount": 100,
-    "amountSuffix": 0.001,
-    "usdAmount": 100,
-    "tokenSymbol": "USDT",
-    "networkId": "evm--1",
-    "receivingAddress": "0x1111111111111111111111111111111111111111",
-    "payerAddress": "0x2222222222222222222222222222222222222222",
-    "txHash": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    "txLink": "https://wallet.ds.pro/v1/eth/tx/0xabcdef...",
-    "productPrice": 100,
-    "productPriceCurrency": "USD",
-    "actualReceivedAmount": 100.001,
-    "amountDiff": 0,
-    "actualUsdAmount": 100,
-    "paidSource": "CHAIN_DETECTION",
-    "paidAt": 1717689660000,
-    "completedAt": 1717689720000
-  }
-]
-```
-
-The response uses `NON_NULL` serialization: fields without a value are omitted rather than necessarily returned as `null`.
-
-| Field | Type | Description |
-|------|------|-------------|
-| `orderNo` | string | DSPay order ID |
-| `outOrderNo` | string | Merchant external order ID |
-| `createAt` | long | Creation time, Unix milliseconds |
-| `status` | string | `CREATED` / `TIMEOUT` / `CLOSED` / `COMPLETED` / `REFUNDED` |
-| `statusDesc` | string | Human-readable order-state description currently returned in Chinese |
-| `payAmount` | decimal | Payable token amount including the DSPay suffix |
-| `originPayAmount` | decimal | Merchant amount excluding the suffix; may be omitted for legacy orders |
-| `amountSuffix` | decimal | Order-identification suffix; may be omitted for legacy orders |
-| `usdAmount` | decimal | USD amount snapshot locked at order creation |
-| `tokenSymbol` | string | Token symbol, e.g. `USDT` |
-| `networkId` | string | Network identifier, e.g. `evm--1` |
-| `receivingAddress` | string | Receiving address |
-| `payerAddress` | string | Payer address; omitted before payment |
-| `txHash` | string | On-chain transaction hash; omitted before an on-chain transaction exists |
-| `txLink` | string | Blockchain-explorer redirect URL; omitted when unavailable |
-| `productPrice` | decimal | Product price; omitted when not supplied |
-| `productPriceCurrency` | string | Product-price currency; omitted when not supplied |
-| `actualReceivedAmount` | decimal | Actual received token amount; omitted before completion |
-| `amountDiff` | decimal | `actualReceivedAmount - payAmount`; omitted before completion |
-| `actualUsdAmount` | decimal | Actual received USD value locked at completion; omitted before completion |
-| `paidSource` | string | `CHAIN_DETECTION` or `SUPPLEMENT`; omitted before completion |
-| `paidAt` | long | Payment time, Unix milliseconds; omitted before payment |
-| `completedAt` | long | Completion time, Unix milliseconds; omitted before completion |
-
-Common errors:
-
-| Error code | Cause |
-|------------|-------|
-| [`40001`](#error-40001) | Both `orderNo` and `outOrderNo` are empty, or a field is invalid |
-| [`50501`](#error-50501) | `merchantNo` does not exist |
-| [`50503`](#error-50503) | `apiSecret` is frozen |
-| [`50613`](#error-50613) | Signature missing, canonical field order incorrect, or signature mismatch |
-| [`50614`](#error-50614) | `timestamp` is outside the ±5-minute window |
-
-Polling guidance:
-
-- Use webhooks as the normal path. Start querying only when no webhook arrives within the expected business window.
-- Apply backoff; do not poll continuously at a fixed high frequency.
-- Generate a fresh timestamp and signature for every query.
-- Stop polling after reaching the target state. An empty array means no matching order currently exists and may be retried according to business policy.
-- Keep state updates idempotent regardless of whether they come from a webhook or an active query.
+Use webhooks as the normal path. Query with backoff only after a missed webhook, a customer redirect, or during reconciliation. Generate a fresh `timestamp` and `signature` for every query, and keep all local state transitions idempotent.
 
 ### 5.12 ⚠️ Pitfalls (6)
 
-1. **Verify the raw body**: use the original HTTP body string — never deserialize and re-`JSON.stringify()` (field-order changes break the signature). In Java use `@RequestBody String rawBody`; in Node.js use the `raw-body` package to capture the raw byte stream. This is the **single most common** cause of webhook verification failures.
+1. **Verify the raw body**: use the original HTTP body string — never deserialize and re-`JSON.stringify()` (field-order changes break the signature). A Java web framework can expose the original request body directly; this repository's Node.js Demo accumulates raw bytes from the built-in HTTP request stream and does not require `raw-body` or any other npm package. This is the **single most common** cause of webhook verification failures.
 
 2. **HMAC secret is used directly — do NOT Base64-decode**: [apiSecret](#term-apisecret) is a 43-char Base64Url string, but when used as an HMAC key, call `secret.getBytes(UTF_8)` directly. Base64Url is only the storage encoding — [HMAC-SHA256](#term-hmac-sha256) is encoding-agnostic about the key byte sequence.
 
@@ -1224,7 +1063,7 @@ Rotate [apiSecret](#term-apisecret) regularly (e.g. quarterly) from the [DSPay M
 
 3. **Automatic delivery stops after all 11 attempts fail**: 3 immediate attempts plus 8 escalating attempts. The theoretical cumulative span is about 43h 21m 30s; request duration and scheduler polling may make it longer. Detect missed state through order queries or reconciliation, and provide a manual recovery path.
 
-4. **An old event may stop retrying**: when an order's state advances mid-retry (for example, `CLOSED` is supplemented to `COMPLETED`), DSPay cancels delivery of the old event and sends the new-state event separately. Handle received events idempotently by `orderNo + eventType`.
+4. **A previous event may stop retrying**: when an order state changes mid-retry, DSPay cancels delivery of the previous event and sends the new-state event separately. Handle events idempotently by `orderNo + eventType`.
 
 5. **Statistics use `COALESCE(actual_usd_amount, usd_amount)`**: prefers the actual received USD value locked at completion, falls back to the creation-time `usd_amount` snapshot. The cumulative number reflects "locked" USD value, not real-time. Merchants needing real-time USD valuations must recompute as `on-chain amount × current rate` themselves.
 
@@ -1313,7 +1152,7 @@ This chapter covers the testing & integration workflow: local environment setup,
 
 - Start the [DSPay](#term-dspay) service: `mvn spring-boot:run -Dspring-boot.run.profiles=local`.
 - Test-chain info: local defaults to each chain's mainnet RPC (same as production).
-- Test tokens: use small amounts of real mainnet tokens (e.g. 0.01 [USDT](#term-usdt)).
+- Test tokens: keep at least 0.02 [USDT](#term-usdt) to cover a 0.01 USDT test order plus its matching suffix, and fund the chain's gas token separately.
 
 ### 8.2 Webhook Testing (ngrok / cpolar)
 
@@ -1344,9 +1183,9 @@ Test in the order below — skipping ahead makes failures hard to attribute:
 ### 8.4 Test Tokens
 
 Use small amounts of mainnet stablecoins per chain:
-- Ethereum: 0.01 [USDT](#term-usdt) (`0xdac17f958d2ee523a2206206994597c13d831ec7`).
-- BSC: 0.01 [USDT](#term-usdt) (`0x55d398326f99059fF775485246999027B3197955`).
-- Tron: 0.01 [USDT](#term-usdt) (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`).
+- Ethereum: at least 0.02 [USDT](#term-usdt) (`0xdac17f958d2ee523a2206206994597c13d831ec7`), plus ETH for gas.
+- BSC: at least 0.02 [USDT](#term-usdt) (`0x55d398326f99059fF775485246999027B3197955`), plus BNB for gas.
+- Tron: at least 0.02 [USDT](#term-usdt) (`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`), plus TRX or sufficient energy/bandwidth.
 
 > The test payment must exactly match the `payAmount` displayed by the cashier, including the suffix; otherwise chain detection will not match.
 
@@ -1387,7 +1226,7 @@ A: No. [SIWE](#term-siwe) requires a private-key signature; watch-only wallets c
 ### 9.2 Signing
 
 **Q: Signature verification keeps failing ([`50613`](#error-50613)) — why?**
-A: A common cause is BigDecimal scientific notation. `new BigDecimal("1E+2").toString()` emits `1E+2`; use `toPlainString()` to get `100`. Confirm that `payAmount` is a plain decimal string with at most 2 decimal places and inspect the canonical string for `E` characters.
+A: Compare the complete canonical string byte-for-byte. Frequent causes are field order, omitted empty keys, decimal scientific notation, or inconsistent `attach` / `allowedPaymentMethods` canonicalization. Java decimals should use `BigDecimal.toPlainString()`.
 
 **Q: How do I handle amount precision in Node.js?**
 A: `productPrice` and `payAmount` must be string literals like `'99.99'` or use Big.js — never JS `number`. JS `number` drifts into scientific notation past `Number.MAX_SAFE_INTEGER` or for very small decimals.
@@ -1396,12 +1235,12 @@ A: `productPrice` and `payAmount` must be string literals like `'99.99'` or use 
 A: **No.** The [apiSecret](#term-apisecret) string is used directly as the HMAC key. Base64Url is only the storage encoding — [HMAC-SHA256](#term-hmac-sha256) is encoding-agnostic about the key byte sequence. Pass `secret.getBytes(UTF_8)` directly to `SecretKeySpec`.
 
 **Q: What happens if the signature field order is wrong?**
-A: The signature will not match → [`50613`](#error-50613). Concatenate `merchantNo → outOrderNo → payAmount → timestamp` in that exact order, joined with `&`. `outOrderNo` is required and must appear in both the signature and cashier URL. Optional product fields are not signed; the payer selects the chain/token in the cashier.
+A: The signature will not match → [`50613`](#error-50613). Use the complete fixed order: `merchantNo → outOrderNo → productPrice → productPriceCurrency → productId → attach → payAmount → allowedPaymentMethods → returnUrl → successRedirectUrl → timestamp`. Every business field is signed; absent optional fields remain as `key=`.
 
 ### 9.3 Orders
 
-**Q: Why does the cashier display a different `payAmount` from the value in my URL?**
-A: The suffix mechanism. [DSPay](#term-dspay) appends a unique suffix (e.g. `100.001`) to differentiate same-amount concurrent orders. The payer must send the cashier-displayed amount; merchant reconciliation uses webhook or active-query results.
+**Q: Why does Checkout display a different `payAmount` from my `originPayAmount`?**
+A: The suffix mechanism. Create records the original amount; DSPay allocates a matching suffix when the customer confirms a payment method. The payer must send the final Checkout amount; use webhook or public-query results for reconciliation.
 
 **Q: The cashier shows [`50609`](#error-50609) `NO_ENABLED_ADDRESS`?**
 A: The chain is supported, but the merchant has no `ENABLED` receiving address for that [networkId](#term-networkid) (chain). Configure a receiving address in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/).
@@ -1423,8 +1262,8 @@ A: Check that your response matches the strict `{"code":"SUCCESS"}` format. `cod
 **Q: What's the retry policy?**
 A: 11 total attempts per event: **3 immediate consecutive attempts**, then **8 escalating attempts**, each delayed from the previous failed attempt by 30s / 1min / 5min / 15min / 1h / 6h / 12h / 24h. The theoretical cumulative span is about 43h 21m 30s; actual time may be longer. Automatic delivery stops after all 11 attempts fail; use order queries or reconciliation for recovery.
 
-**Q: What happens if order state advances while an old event is retrying?**
-A: DSPay stops delivering the old event and sends the new-state event separately. For example, if a `CLOSED` order is supplemented to `COMPLETED`, the old `CLOSED` delivery stops and `COMPLETED` is sent. Handle received events idempotently by `orderNo + eventType`.
+**Q: What happens if order state changes while a previous event is retrying?**
+A: DSPay stops the previous delivery and sends the new-state event separately. For example, if a `CLOSED` order is supplemented to `COMPLETED`, `CLOSED` delivery stops and `COMPLETED` is sent. Handle events idempotently by `orderNo + eventType`.
 
 **Q: What does `reopened=true` mean?**
 A: After an order is `CLOSED`, the merchant verifies the on-chain settlement and performs a manual supplement in the portal. [DSPay](#term-dspay) reopens the order as `COMPLETED` and emits a webhook with `reopened=true`, distinguishing manual-supplement completion from normal completion.
@@ -1441,7 +1280,7 @@ A: **No.** `CREATED` / `TIMEOUT` advance order state but do not emit webhooks. D
 A: After-hours emergency → freeze the key in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (stop-bleed); once confirmed → `regenerate` for a fresh key. Do not simply restore the old key.
 
 **Q: What's the difference between the platform whitelist and the merchant's ENABLED addresses?**
-A: The platform whitelist (returned by `GET /dspay/public/supported-chains`) defines "which chains [DSPay](#term-dspay) supports"; the merchant-level receiving addresses (configured in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/)) define "which address this merchant uses on each chain." Both conditions must hold at order creation.
+A: The platform list defines supported methods; enabled merchant addresses define which networks the merchant can receive on; `allowedPaymentMethods` may further restrict one order. Checkout shows their intersection.
 
 **Q: How do I handle [`50503`](#error-50503) `API_SECRET_DISABLED`?**
 A: The key has been frozen. If you froze it yourself, restore it from the portal after triage; if someone else did, contact the merchant administrator.
@@ -1453,15 +1292,15 @@ A: The key has been frozen. If you froze it yourself, restore it from the portal
 <a id="appendix-a-java-reference-integration"></a>
 ## Appendix A: Java Reference Integration
 
-Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers both directions: building a signed cashier redirect and verifying webhook signatures.
+Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers signed public create/query calls, redirecting to the returned `checkoutUrl`, raw-body webhook verification, and strict acknowledgement.
 
 | File | Purpose |
 |------|---------|
 | [`README.md`](../Demo/back-end/java/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Local signing, URL encoding, cashier redirect, raw-body webhook verification, and strict ACK response |
+| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Create/query signing, public API calls, Checkout redirect, raw-body verification, and strict ACK |
 | [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | Background process lifecycle |
 
-The create flow is: **merchant backend signs locally → builds cashier URL → redirects user**. It does not call the DSPay create-order API directly; the cashier completes order creation after the user selects a chain and token.
+The create flow is: **merchant backend signs → calls the public create API → receives `checkoutUrl` → redirects the customer**. The customer then confirms a network and token in DSPay Checkout.
 
 > Source code is intentionally not copied into this appendix. Maintaining the canonical demo automatically keeps this reference current.
 
@@ -1472,16 +1311,16 @@ The create flow is: **merchant backend signs locally → builds cashier URL → 
 <a id="appendix-b-nodejs-reference-integration"></a>
 ## Appendix B: Node.js Reference Integration
 
-Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). It uses only built-in Node.js modules and covers cashier redirects plus webhook verification.
+Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). It uses built-in Node.js modules and covers signed public create/query calls, Checkout redirects, and webhook verification.
 
 | File | Purpose |
 |------|---------|
 | [`README.md`](../Demo/back-end/nodejs/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, signed cashier URL construction, 302 redirect, and raw-body callback handling |
+| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, public create/query API calls, 302 redirect, and raw-body webhook handling |
 | [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | Order signing and constant-time callback signature verification |
 | [`package.json`](../Demo/back-end/nodejs/package.json) | Start command and runtime metadata |
 
-The create flow is: **merchant backend signs locally → builds cashier URL → redirects user**. It does not call the DSPay create-order API directly; the cashier completes order creation after the user selects a chain and token.
+The create flow is: **merchant backend signs → calls the public create API → receives `checkoutUrl` → redirects the customer**. The customer then confirms a network and token in DSPay Checkout.
 
 > Source code is intentionally not copied into this appendix. Maintaining the canonical demo automatically keeps this reference current.
 
@@ -1502,7 +1341,7 @@ Source: `DspayExceptionConstant.java`, grouped by error-code range.
 | <a id="error-40101"></a>40101 | UNAUTHORIZED | Not authenticated. |
 | <a id="error-40301"></a>40301 | FORBIDDEN | Insufficient permissions. |
 | <a id="error-40401"></a>40401 | NOT_FOUND | Resource not found. |
-| <a id="error-40901"></a>40901 | STATE_CONFLICT | State conflict. |
+| <a id="error-40901"></a>40901 | STATE_CONFLICT | Merchant order number has already been used; the same merchant retried an `outOrderNo` with different business fields. |
 | <a id="error-50000"></a>50000 | INTERNAL_ERROR | Internal service error. |
 
 #### Merchant (505xx)
@@ -1541,20 +1380,12 @@ Source: `DspayExceptionConstant.java`, grouped by error-code range.
 | <a id="error-50706"></a>50706 | CHAIN_ADDRESS_ALREADY_BOUND | Address on this chain is already bound. |
 | <a id="error-50707"></a>50707 | CHAIN_NOT_SUPPORTED | Chain not supported ([networkId](#term-networkid) is not in the 9-chain whitelist or the chain is disabled). |
 
-#### JWT Authentication (508xx)
-
-| code | msg | Description |
-|------|------|------|
-| <a id="error-50801"></a>50801 | JWT_TOKEN_MISSING | Missing [JWT](#term-jwt) token. |
-| <a id="error-50802"></a>50802 | JWT_TOKEN_INVALID | [JWT](#term-jwt) token is invalid. |
-| <a id="error-50803"></a>50803 | JWT_TOKEN_EXPIRED | [JWT](#term-jwt) token has expired (includes session expiry). |
-
 #### SIWE Authentication (509xx)
 
 | code | msg | Description |
 |------|------|------|
-| <a id="error-50901"></a>50901 | SIWE_NONCE_NOT_FOUND | [SIWE](#term-siwe) [nonce](#term-nonce) does not exist. |
-| <a id="error-50902"></a>50902 | SIWE_NONCE_EXPIRED | [SIWE](#term-siwe) [nonce](#term-nonce) has expired (TTL 5 minutes). |
+| <a id="error-50901"></a>50901 | SIWE_NONCE_NOT_FOUND | [SIWE](#term-siwe) nonce does not exist. |
+| <a id="error-50902"></a>50902 | SIWE_NONCE_EXPIRED | [SIWE](#term-siwe) nonce has expired (TTL 5 minutes). |
 | <a id="error-50903"></a>50903 | SIWE_SIGNATURE_INVALID | [SIWE](#term-siwe) signature is invalid (ecrecover-recovered address does not match). |
 | <a id="error-50904"></a>50904 | SIWE_DOMAIN_MISMATCH | [SIWE](#term-siwe) domain mismatch. |
 | <a id="error-50905"></a>50905 | SIWE_MESSAGE_INVALID | [SIWE](#term-siwe) message is invalid. |

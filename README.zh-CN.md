@@ -63,7 +63,7 @@ DS-Pay 可用于符合当地法律与平台政策的软件服务、数字内容�
 
 ## 工作原理
 <div align="center">
-  <img src="./src/how-it-works/Implementation Principle_en.png" alt="Implementation Principle_en"/>
+  <img src="./src/how-it-works/Implementation-Principle.svg" alt="DSPay 商户预下单与 Pay Now 时序图"/>
 </div>
 
 ## 快速集成
@@ -71,7 +71,7 @@ DS-Pay 可用于符合当地法律与平台政策的软件服务、数字内容�
 DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础商户配置后，即可快速上线加密货币收款服务。
 
 <div align="center">
-  <img src="./src/quick-integration/Flowchart_en.png" alt="Flowchart_en"/>
+  <img src="./src/quick-integration/Flowchart.svg" alt="DSPay 商户接入流程"/>
 </div>
 
 - 登录商户控制台：支持通过 WalletConnect 扫码快速注册和登录。
@@ -82,7 +82,11 @@ DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础�
 
 - 配置回调 URL（可选）：实时接收订单状态通知，并与您的业务系统对接。
 
-- 调用 API 创建订单：通过标准化开放 API，商户仅需少量开发工作即可发起订单。
+- 服务端预下单：商户服务端签名调用 `POST /dspay/public/order/create`，获取 `orderNo` 和 `checkoutUrl`。
+
+- 跳转 DSPay 收银台：商户将用户跳转到 `checkoutUrl`，用户在收银台选择网络和代币并点击 Pay Now。
+
+- 确认支付结果：商户验证异步回调，并使用 `POST /dspay/public/order/query` 主动查询兜底。浏览器跳转不能作为支付成功凭据。
 
 完整文档：[SDK 集成指南](./SDK/SDK.zh-CN.md)
 
@@ -98,6 +102,8 @@ DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础�
 | [前端 集成指南](./Demo/front-end/)          | 
 
 [查看更多演示](./Demo)
+
+Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 11+、PHP 5.6+；前端需要支持 `crypto.randomUUID()` 的现代浏览器。Node.js只需一个版本。实际验证版本和依赖说明见 [Demo 已验证运行环境](./Demo/README.zh-CN.md#已验证运行环境)。
 
 
 ## 联系我们

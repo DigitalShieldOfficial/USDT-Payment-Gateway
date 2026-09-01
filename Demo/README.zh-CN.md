@@ -1,161 +1,120 @@
-## 语言
 [English](README.md) | [中文](README.zh-CN.md)
 
 # DSPay Mock Merchant
 
-模拟商户系统（Mock Merchant），用于快速体验 DSPay 支付流程 —— 商户前端发起支付 → 商户后端本地签名并拼接收银台链接 → 跳转 DSPay 收银台 → 支付回调通知。
+该 Demo 模拟商户接入流程：前端请求商户后端，商户后端签名调用 DSPay 预下单接口，收到 `checkoutUrl` 后再 302 跳转用户。Demo 不会在浏览器或收银台 URL 中暴露 `apiSecret` 和订单签名参数。
 
-## 项目结构
+## 结构
 
-```
-dspay-mock-merchant/
-├── back-end/                  # 模拟商户后端
-│   ├── java/                  # Java 11+ 实现（零外部依赖）
-│   │   └── src/DspayMockMerchant.java
-│   ├── php/                   # PHP 5.6+ 实现（无需 Composer）
-│   │   ├── server.php
-│   │   └── start.sh
-│   └── nodejs/                # Node.js 18+ 实现（零 npm 依赖）
-│       └── src/
-│           ├── server.js
-│           └── signer.js
-└── front-end/                 # 模拟商户前端（纯静态 HTML）
-    └── index.html
+```text
+Demo/
+├── front-end/index.html
+└── back-end/
+    ├── nodejs/   Node.js 18.20.8，零 npm 依赖
+    ├── java/     JDK 11+，零外部依赖
+    └── php/      PHP 5.6+，无需 Composer
 ```
 
-## 整体联动流程
+## 已验证运行环境
 
-```
-                                DSPay
-┌─────────────────────┐     ┌──────────────┐
-│ DSPay 后台           │     │  DSPay 收银台  │
-│                     │     │              │
-│ ① 注册商户          │     │ ④ 用户完成    │
-│ ② 获取 merchantNo   │     │   支付        │
-│    生成 apiSecret    │     │              │
-└────────┬────────────┘     └──────▲───────┘
-         │                         │
-    提供 merchantNo         ⑤ 异步通知
-     + apiSecret             POST /notify
-         │                         │
-         ▼                         │
-┌──────────────────────────────────────────────┐
-│              模拟商户系统                     │
-│                                              │
-│  ┌─────────────┐         ┌──────────────┐   │
-│  │  后端        │◄────────│   前端        │   │
-│  │  GET /create │  ③ 点击 │  index.html  │   │
-│  │  POST /notify│  Pay Now│              │   │
-│  │              │────────►│              │   │
-│  │              │ 302跳转  │              │   │
-│  └──────────────┘  收银台  └──────────────┘   │
-│   Java、Node.js 或 PHP                         │
-└──────────────────────────────────────────────┘
-```
+| Demo | 最低版本 | 已验证版本 | 依赖说明 |
+|------|----------|------------|----------|
+| Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 零 npm 依赖；提供 `.nvmrc` |
+| Java | JDK 11 | Microsoft OpenJDK `11.0.27`；Temurin `21.0.11` | 零 Maven/Gradle 依赖 |
+| PHP | PHP 5.6 | PHP CLI `5.6.40`、`8.5.10` | 无需 Composer |
+| 前端 | 支持 `crypto.randomUUID()` 的现代浏览器 | Chrome `151.0.7922.175` | 单文件 HTML，无构建步骤 |
 
-### 流程说明
+验证操作系统：macOS `15.1`、Docker Linux。最低版本和已验证版本含义不同：最低版本是源码兼容基线，已验证版本是仓库测试实际运行过的版本。
 
-| 步骤 | 描述 |
-|------|------|
-| ① | 前往 [DSPay 后台](https://mcashier.ds.pro/login/)注册成为商户 |
-| ② | 在商户管理台 [账户页面](https://mcashier.ds.pro/account) 获取 `merchantNo`，在 [设置页面](https://mcashier.ds.pro/settings) 获取「支付 Key」即 `apiSecret` |
-| ③ | 将 `merchantNo` 和 `apiSecret` 替换后端代码中的占位符并启动后端；点击「Pay Now」后，后端本地签名并返回 302 收银台跳转，不调用创建订单 API |
-| ④ | HTTP 302 跳转到 DSPay 收银台，用户完成支付 |
-| ⑤ | DSPay 异步回调 `POST /notify`，后端验签后记录支付结果 |
-
-## 快速开始
-
-### 前置条件：注册商户并获取凭证
-
-1. 打开 [DSPay 后台](https://mcashier.ds.pro/login/)注册成为商户
-2. 注册后进入 [账户页面](https://mcashier.ds.pro/account) 复制你的 **商户编号（merchantNo）**
-3. 进入 [设置页面](https://mcashier.ds.pro/settings)，在「支付 Key」栏目中获取 **API 密钥（apiSecret）**
-
-> :warning: `merchantNo` 和 `apiSecret` 是敏感凭证，请妥善保管。
-
-### 选择语言版本启动后端
-
-后端提供 Java、Node.js 和 PHP 三种实现，功能完全等价，选择你熟悉的一种即可。
-
-#### 选项 A：Node.js（推荐，启动最快）
+运行前可先确认本机版本：
 
 ```bash
-# 1. 进入 Node.js 后端目录
-cd back-end/nodejs
+node --version && npm --version
+java -version && javac -version
+php --version
+```
 
-# 2. 设置你的商户凭证（替换占位符）
-export MERCHANT_NO="你的merchantNo"
-export API_SECRET="你的apiSecret"
+版本低于表中最低版本时不保证可以运行；Demo 未使用 Express、Spring Boot、Laravel 等框架，因此没有对应框架版本要求。
 
-# 3. 启动后端（监听 localhost:3000）
+Node.js相关文档和代码全部使用同一基线，不需要安装或切换多个Node版本：
+
+```bash
+cd Demo/back-end/nodejs
+nvm install
+nvm use
+npm test
+```
+
+## 流程
+
+1. 前端点击 Pay Now，请求本地商户后端 `GET /create`。
+   前端在当前会话内复用同一个 `outOrderNo`，用于演示创建接口幂等重试。
+2. 商户后端生成唯一 `outOrderNo`，构造完整创建请求并计算 HMAC。
+3. 商户后端调用 `POST /dspay/public/order/create`。
+4. DSPay 返回 `orderNo` 和 `checkoutUrl`。
+5. 商户后端 302 跳转到 `checkoutUrl`。
+6. 用户在 DSPay 收银台选币并确认 Pay Now，随后链上付款。
+7. DSPay 调用本地 `/notify`；Demo 使用 Raw Body 验签。
+8. 超时返回页、成功页均不能直接视为支付凭证，商户需调用 `/dspay/public/order/query` 二次确认。
+
+## Node.js 启动
+
+> 以下命令中的 `REPLACE_WITH_REAL_MERCHANT_NO`、`REPLACE_WITH_REAL_API_SECRET` 和 `REPLACE_WITH_REAL_DSPAY_API_HOST` 都是占位值，执行前必须替换为真实参数。`merchantNo` 和 `apiSecret` 从DSPay商户后台获取。
+
+```bash
+cd Demo/back-end/nodejs
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export PUBLIC_BASE_URL="http://localhost:3000"
 node src/server.js
 ```
 
-> 或直接编辑 `src/server.js` 第 62-63 行，将 `change-me-to-your-merchantNo` 和 `change-me-to-your-apiSecret` 替换为真实值后启动。
+打开 `Demo/front-end/index.html`，点击 Pay Now。
 
-#### 选项 B：Java
+本地回调需要公网可访问地址。可用 ngrok 等工具代理 3000 端口，然后把 `PUBLIC_BASE_URL` 和商户后台 `notifyUrl` 改为对应公网地址。
 
-```bash
-# 1. 进入 Java 后端目录
-cd back-end/java
-
-# 2. 设置商户凭证并启动（JDK 11+）
-java -DmerchantNo="你的merchantNo" -DapiSecret="你的apiSecret" DspayMockMerchant.java
-```
-
-> 或直接编辑 `src/DspayMockMerchant.java` 第 47-50 行，将占位符替换为真实值后启动。
-
-#### 选项 C：PHP（无需 Composer）
-
-PHP Demo 已包含所需源码，不需要安装或使用 Composer。
+## Java 启动
 
 ```bash
-# 1. 进入 PHP 后端目录
-cd back-end/php
-
-# 2. 设置商户凭证并启动（PHP 5.6+，监听 localhost:3000）
-MERCHANT_NO="你的merchantNo" API_SECRET="你的apiSecret" ./start.sh
+cd Demo/back-end/java
+java \
+  -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" \
+  -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
+  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
+  -DpublicBase="http://localhost:3000" \
+  src/DspayMockMerchant.java
 ```
 
-也可以直接运行：`php -S localhost:3000 server.php`。详细说明见 [PHP Demo README](back-end/php/README.zh-CN.md)。
+## PHP 启动
 
-### 启动前端
+> 只需把下面两个 `REPLACE_WITH_REAL_*` 占位值替换为商户后台中的真实参数。正式API地址和本地回跳地址已经填写，不要复制Markdown链接语法到Shell命令中。
 
-用浏览器直接打开 `front-end/index.html`，你将看到 Nova Store 模拟商品页面。
+```bash
+cd Demo/back-end/php
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+export DSPAY_BASE_URL="https://wallet.ds.pro"
+export PUBLIC_BASE_URL="http://localhost:3000"
+./start.sh
+```
 
-### 发起支付
+## 本地接口
 
-在前端页面点击 **「Pay Now」** 按钮：
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/create` | 服务端创建 DSPay 订单并 302 跳转 `checkoutUrl` |
+| GET | `/query?orderNo=...` | Node.js/PHP Demo 主动查询 DSPay 订单 |
+| POST | `/notify` | 接收回调并使用 Raw Body 验签 |
+| GET | `/payment/return` | 订单超时返回页；Node.js/PHP Demo 会继续调用查询接口 |
+| GET | `/payment/success` | 成功跳转页；Node.js/PHP Demo 会继续调用查询接口 |
 
-1. 前端请求 `GET http://localhost:3000/create`（携带商品参数）
-2. 后端生成签名订单，返回 HTTP 302 跳转到 DSPay 收银台
-3. 在收银台完成支付
-4. DSPay 异步回调 `POST http://localhost:3000/notify`，后端验签并记录日志
+## 生产实现注意
 
-## API 说明
-
-### GET /create
-
-创建订单并跳转收银台。
-
-| 参数 | 必填 | 说明 |
-|------|------|------|
-| `payAmount` | 否 | 支付金额，默认 `0.01`；必须为大于 0、最多 2 位小数的普通十进制字符串 |
-| `productPrice` | 否 | 商品价格，默认 `0.01` |
-| `productPriceCurrency` | 否 | 币种，默认 `USD` |
-| `productId` | 否 | 商品 ID，默认 `NOVA-LIFETIME-001` |
-
-> **`payAmount` 精度限制：** 稳定币统一按 6 位精度处理。商户最多提交 2 位小数，后 4 位由 DSPay 生成订单尾数。`100`、`100.1`、`100.12` 合法，`100.123` 不合法。必须使用普通十进制字符串，不能传数字或科学计数法。超过 2 位小数时返回 [`50612`](../SDK/SDK.zh-CN.md#error-50612)。详见 [订单尾数机制](../SDK/SDK.zh-CN.md#订单尾数机制详解)。
-
-响应：HTTP 302 重定向到 DSPay 收银台（附带签名参数）。
-
-### POST /notify
-
-接收 DSPay 支付回调。后端使用 `apiSecret` 对回调 body 做 HMAC-SHA256 验签，验签通过后记录支付结果日志。
-
-## 后续扩展
-
-
-
-
-`back-end/` 目录计划支持更多语言版本（Python、Go 等），欢迎贡献。
+- `apiSecret` 存入 KMS/密钥管理服务，不写死在代码中。
+- HTTP 请求配置连接/读取超时和有限重试；重试复用同一 `outOrderNo`。
+- `returnUrl`和`successRedirectUrl`均为可选字段；`returnUrl`仅用于订单超时，`successRedirectUrl`仅用于订单完成。未配置对应URL时，DSPay停留当前页面。
+- `checkoutUrl`在订单创建180天后不再允许查看，不能作为永久订单详情入口。
+- 回调先验签，再幂等更新本地订单，事务成功后才返回 `{"code":"SUCCESS"}`。
+- 不根据信任前端跳转或 URL 发货，只信任验签回调或服务端查询的 `COMPLETED`。
+- 示例 `attach` 只包含非敏感标识；禁止传密码、私钥和证件数据。
