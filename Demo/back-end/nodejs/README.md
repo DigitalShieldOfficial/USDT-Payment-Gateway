@@ -23,7 +23,7 @@ DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST" PUBLIC_BASE_URL="http:
 
 - `GET /create`: server-to-server create, then 302 to returned `checkoutUrl`
 - `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
-- `POST /notify`: verify `X-DSPay-Signature` over the exact raw body
+- `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
 - `/payment/return` handles timeout and `/payment/success` handles completion; both query DSPay before fulfillment
 
 Run tests with `npm test`.

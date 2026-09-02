@@ -93,20 +93,13 @@ const outOrderNo = `ORDER-${Date.now()}`;
 const payAmount = '0.01';
 const timestamp = Date.now();
 
-// 创建签名采用固定字段顺序；可选字段未传时仍保留 key=。
-const canonical = [
-  `merchantNo=${MERCHANT_NO}`,
-  `outOrderNo=${outOrderNo}`,
-  'productPrice=',
-  'productPriceCurrency=',
-  'productId=',
-  'attach=',
-  `payAmount=${payAmount}`,
-  'allowedPaymentMethods=',
-  'returnUrl=',
-  'successRedirectUrl=',
-  `timestamp=${timestamp}`,
-].join('&');
+// 过滤值为 null/undefined 的字段，再按参数名 ASCII 升序拼接。
+const fields = {merchantNo: MERCHANT_NO, outOrderNo, payAmount, timestamp};
+const canonical = Object.keys(fields)
+  .filter((key) => fields[key] !== null && fields[key] !== undefined)
+  .sort()
+  .map((key) => `${key}=${fields[key]}`)
+  .join('&');
 
 const signature = crypto.createHmac('sha256', API_SECRET)
   .update(canonical, 'utf8')
@@ -425,7 +418,7 @@ DSPay 使用识别尾数区分相同网络、代币、收款地址和原始金�
 ### 4.2 标准接入流程
 
 1. 商户后端可调用 `GET /dspay/public/supported-chains` 获取平台支持的网络和代币。
-2. 商户后端生成唯一 `outOrderNo`，按固定字段顺序签名。
+2. 商户后端生成唯一 `outOrderNo`，过滤值为 `null` 的字段后按参数名 ASCII 升序签名。
 3. 商户后端调用 `POST /dspay/public/order/create`。
 4. DSPay 立即创建状态为 `CREATED` 的订单，返回 `orderNo`、`checkoutUrl` 和支付截止时间。
 5. 商户将用户跳转到 `checkoutUrl`。
@@ -447,14 +440,14 @@ Content-Type: application/json
 |---|---|---:|---:|---|
 | `merchantNo` | string | 是 | 是 | DSPay 商户编号；不能为空，字符串长度最多 32 个字符 |
 | `outOrderNo` | string | 是 | 是 | 商户订单号；不能为空，字符串长度最多 64 个字符；同一商户下唯一，也是幂等键 |
-| `productPrice` | decimal | 否 | 是 | 商品法币价格；整数部分最多 14 位，小数部分最多 6 位 |
-| `productPriceCurrency` | string | 否 | 是 | 商品价格币种；字符串长度最多 16 个字符 |
-| `productId` | string | 否 | 是 | 商户产品 ID；字符串长度最多 64 个字符 |
-| `attach` | object | 否 | 是 | 附加 JSON 对象；规范化 JSON 的 UTF-8 编码长度最多 4096 字节，嵌套深度最多 3 层 |
+| `productPrice` | decimal | 否 | 值非null时 | 商品法币价格；整数部分最多 14 位，小数部分最多 6 位 |
+| `productPriceCurrency` | string | 否 | 值非null时 | 商品价格币种；字符串长度最多 16 个字符 |
+| `productId` | string | 否 | 值非null时 | 商户产品 ID；字符串长度最多 64 个字符 |
+| `attach` | object | 否 | 值非null时 | 附加 JSON 对象；规范化 JSON 的 UTF-8 编码长度最多 4096 字节，嵌套深度最多 3 层 |
 | `payAmount` | decimal | 是 | 是 | 原始应付代币金额；最小值 `0.0000000001`，整数部分最多 12 位，小数部分最多 18 位 |
-| `allowedPaymentMethods` | array | 否 | 是 | 限制用户可选组合；数组最多 50 项；不传或传空数组表示不额外限制 |
-| `returnUrl` | string | 否 | 是 | 可选；订单进入 `TIMEOUT` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。未传时按空字符串参与签名，保留 `returnUrl=` |
-| `successRedirectUrl` | string | 否 | 是 | 可选；仅订单进入 `COMPLETED` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。未传时按空字符串参与签名，保留 `successRedirectUrl=`；未配置时停留 DSPay 成功页 |
+| `allowedPaymentMethods` | array | 否 | 值非null时 | 限制用户可选组合；数组最多 50 项；不传或传空数组表示不额外限制；显式空数组参与签名时值为空字符串 |
+| `returnUrl` | string | 否 | 条件 | 可选；订单进入 `TIMEOUT` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。值不为 `null` 时参与签名；值为 `null` 或未传时不进入签名串 |
+| `successRedirectUrl` | string | 否 | 条件 | 可选；仅订单进入 `COMPLETED` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。值不为 `null` 时参与签名；值为 `null` 或未传时不进入签名串；未配置时停留 DSPay 成功页 |
 | `timestamp` | long | 是 | 是 | Unix 毫秒时间戳；与 DSPay 服务端当前时间的差值绝对值不得超过 300000 毫秒（5 分钟） |
 | `signature` | string | 是 | 否 | HMAC-SHA256 小写十六进制字符串，固定 64 个字符；字段本身不参与签名 |
 
@@ -523,18 +516,16 @@ Content-Type: application/json
 
 #### 4.4.1 创建签名
 
-固定字段顺序：
+签名参数处理规则：
+
+- 排除 `signature`。
+- 值为 `null` 或未传的字段不参与签名。
+- 值不为 `null` 的字段全部参与签名；显式空字符串保留为 `key=`。
+- 按参数名 ASCII 升序排列，再用 `&` 连接 `key=value`。
+- 只排序参数名，不排序参数值。
 
 ```text
-merchantNo -> outOrderNo -> productPrice -> productPriceCurrency -> productId
--> attach -> payAmount -> allowedPaymentMethods -> returnUrl
--> successRedirectUrl -> timestamp
-```
-
-可选字段未传时仍保留 `key=`。
-
-```text
-merchantNo=DSM2080260022215368706&outOrderNo=ORDER-20260821-001&productPrice=100.00&productPriceCurrency=USD&productId=PROD-001&attach={"customerId":"CUST-1001","source":"web"}&payAmount=100.00&allowedPaymentMethods=evm--56|0x55d398326f99059ff775485246999027b3197955&returnUrl=https://merchant.example.com/orders/ORDER-20260821-001&successRedirectUrl=https://merchant.example.com/pay/success&timestamp=1787292000000
+allowedPaymentMethods=evm--56|0x55d398326f99059ff775485246999027b3197955&attach={"customerId":"CUST-1001","source":"web"}&merchantNo=DSM2080260022215368706&outOrderNo=ORDER-20260821-001&payAmount=100.00&productId=PROD-001&productPrice=100.00&productPriceCurrency=USD&returnUrl=https://merchant.example.com/orders/ORDER-20260821-001&successRedirectUrl=https://merchant.example.com/pay/success&timestamp=1787292000000
 ```
 
 ```text
@@ -543,7 +534,7 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 
 规范化：
 
-- 字符串 trim；空可选字段使用空字符串。
+- 字符串值 trim；显式传入空字符串时保留空字符串。
 - decimal 使用普通十进制形式。
 - `attach` 对象键递归按字典序排列，去除多余空白；数字去除无意义尾零，`-0` 转为 `0`。
 - `allowedPaymentMethods` 保留商户顺序并去重，每项拼为 `networkId|contractAddress`，再用逗号连接；`0x` 地址转小写。
@@ -742,6 +733,8 @@ Node.js 和 PHP Demo 遵循同一预下单流程：服务端签名、调用 `POS
 | `reopened` | boolean | 是 | 否 | 是否为 `CLOSED` 后由商户手动补单重开的路径 |
 | `timestamp` | long | 是 | 否 | [DSPay](#term-dspay) 发送时间戳（Unix 毫秒） |
 
+Body中允许返回`null`的字段仍可能存在，但这些字段不进入签名规范串；所有非null字段均参与签名。
+
 > **金额字段说明（5.1.5）**：
 > - `originPayAmount`：商品原价，与商户创建订单时传入的一致
 > - `amountSuffix`：为区分同金额并发订单附加的尾数
@@ -752,15 +745,17 @@ Node.js 和 PHP Demo 遵循同一预下单流程：服务端签名、调用 `POS
 ### 5.6 回调验签四步走
 
 **算法**：[HMAC-SHA256](#term-hmac-sha256)
-**签名内容**：HTTP body 原始字节（payload raw bytes，未反序列化前的原始字符串）
+**签名内容**：回调JSON对象按与创建订单相同的规则生成的规范化字段串
 **输出格式**：hex 小写
 
 **四步验签流程**：
 
-1. **提取 raw body**：用 HTTP body 原始字符串，**不能**反序列化后重新 `JSON.stringify()`（字段顺序变化 → 签名不一致）
-2. **计算 [HMAC-SHA256](#term-hmac-sha256)**：`apiSecret.getBytes(UTF_8)` 作为 key（**不 Base64 解码**），对 raw body 计算
-3. **对比签名**：与 `X-DSPay-Signature` header 常量时间比较（防 timing attack），大小写不敏感
-4. **校验时间戳窗口**：payload 的 `timestamp` 字段必须在当前时间 ±5 分钟内（防重放）
+1. **解析Body**：将回调JSON解析为顶层字段对象
+2. **生成规范串**：排除`signature`和值为`null`的字段；其余字段按参数名ASCII升序，以`&`连接`key=value`。对象/数组使用与创建接口一致的规范JSON，参数值不排序
+3. **计算 [HMAC-SHA256](#term-hmac-sha256)**：`apiSecret.getBytes(UTF_8)` 作为key（**不Base64解码**），对规范串UTF-8字节计算
+4. **对比并防重放**：与`X-DSPay-Signature`常量时间比较，并校验`timestamp`在当前时间±5分钟内
+
+规范串生成代码直接复用[§4.4 签名和幂等](#签名规范化字符串)以及本仓库Java、Node.js、PHP Demo；下面示例只展示HMAC和常量时间比较部分。
 
 #### Java 验签示例
 
@@ -772,19 +767,19 @@ import java.security.MessageDigest;
 
 public class DspaySignatureVerifier {
     /**
-     * @param payload   HTTP body 原始字符串
+     * @param canonical 按统一ASCII规则生成的规范化字段串
      * @param signature X-DSPay-Signature header 值（hex 小写）
      * @param secret    apiSecret 字符串（直接使用，不要 Base64 解码）
      */
-    public static boolean verify(String payload, String signature, String secret) throws Exception {
-        if (payload == null || secret == null || signature == null
+    public static boolean verify(String canonical, String signature, String secret) throws Exception {
+        if (canonical == null || secret == null || signature == null
                 || !signature.matches("(?i)^[0-9a-f]{64}$")) {
             return false;
         }
         Mac mac = Mac.getInstance("HmacSHA256");
         // 关键：secret 直接 getBytes，不做 Base64 解码
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        byte[] expected = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+        byte[] expected = mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8));
         String expectedHex = bytesToHex(expected);
         // 常量时间比较，防 timing attack
         return MessageDigest.isEqual(
@@ -807,14 +802,14 @@ public class DspaySignatureVerifier {
 ```javascript
 const crypto = require('crypto');
 
-function verifySignature(payload, signature, secret) {
+function verifySignature(canonical, signature, secret) {
     if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/i.test(signature)) {
         return false;
     }
     // 关键：secret 直接作为 key，不做 Base64 解码
     const expected = crypto
         .createHmac('sha256', secret)
-        .update(payload, 'utf8')
+        .update(canonical, 'utf8')
         .digest('hex');
     // 使用 timingSafeEqual 防 timing attack
     const expectedBuf = Buffer.from(expected, 'utf8');
@@ -998,16 +993,12 @@ Content-Type: application/json
 | 字段 | 必填 | 签名 | 说明 |
 |---|---:|---:|---|
 | `merchantNo` | 是 | 是 | 商户编号；不能为空；最多 32 个字符 |
-| `orderNo` | 条件 | 非空时 | 与 `outOrderNo` 至少一个非空；最多 64 个字符 |
-| `outOrderNo` | 条件 | 非空时 | 与 `orderNo` 至少一个非空；最多 64 个字符 |
+| `orderNo` | 条件 | 值非null时 | 与 `outOrderNo` 至少一个非空；最多 64 个字符 |
+| `outOrderNo` | 条件 | 值非null时 | 与 `orderNo` 至少一个非空；最多 64 个字符 |
 | `timestamp` | 是 | 是 | Unix 毫秒时间戳；与服务端时间差绝对值不得超过 300000 毫秒 |
 | `signature` | 是 | 否 | HMAC-SHA256 小写十六进制字符串，固定 64 个字符 |
 
-同时传两个订单号时按 AND 匹配。非空字段按以下顺序签名，空可选字段不进入签名串：
-
-```text
-merchantNo -> orderNo（如有） -> outOrderNo（如有） -> timestamp
-```
+同时传两个订单号时按 AND 匹配。排除 `signature` 和未传、`null`字段后，其余字段按参数名ASCII升序拼接；显式空字符串保留为`key=`。
 
 ```text
 merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=1787292500000
@@ -1054,7 +1045,7 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 5.12 ⚠️ 坑点（6 条）
 
-1. **raw body 验签**：用 HTTP body 原始字符串，不能反序列化后重新 `JSON.stringify()`（字段顺序变化 → 签名不一致）。Java Web框架可直接接收原始请求体；本仓库Node.js Demo使用内置HTTP请求流累积原始字节，不需要安装 `raw-body` 或其他npm包。这是回调验签失败**最常见**的原因。
+1. **统一规范串验签**：回调不是对raw body签名。必须解析JSON，过滤null字段，按参数名ASCII升序生成`key=value&...`规范串；对象/数组使用规范JSON。可直接复用创建订单的规范化函数。
 
 2. **HMAC secret 直接 getBytes，不 Base64 解码**：[apiSecret](#term-apisecret) 是 Base64Url 编码 43 字符，但作为 HMAC key 时直接 `secret.getBytes(UTF_8)`，**不要先 Base64 解码**。Base64Url 只是密钥的存储编码，[HMAC-SHA256](#term-hmac-sha256) 对 key 字节序列没有格式要求。
 
@@ -1261,7 +1252,7 @@ ngrok http 8080
 
 | 原因 | 排查方法 |
 |------|---------|
-| payload 反序列化后重新序列化（字段顺序变） | 用 raw body 原始字符串验签 |
+| 直接对raw body计算HMAC | 解析JSON后按统一ASCII规则生成规范串，再计算HMAC |
 | secret 被 Base64 解码了 | 直接用 secret 字符串，不 Base64 解码 |
 | 时间偏差大（防重放拦截） | 检查 `timestamp` 是否在 5 分钟内 |
 | 密钥已 regenerate（旧密钥） | 在 [DSPay 后台](https://mcashier.ds.pro/login/)查看最新密钥 |
@@ -1303,7 +1294,7 @@ A: `productPrice` 和 `payAmount` 用字符串字面量 `'99.99'` 或 Big.js，�
 A: **不需要**。[apiSecret](#term-apisecret) 字符串直接作为 HMAC key 使用。Base64Url 只是密钥的存储编码，[HMAC-SHA256](#term-hmac-sha256) 对 key 字节序列没有格式要求。`secret.getBytes(UTF_8)` 直接传给 `SecretKeySpec`。
 
 **Q: 签名字段顺序错了会怎样？**
-A: 签名不一致 → [`50613`](#error-50613)。必须严格按 `merchantNo → outOrderNo → productPrice → productPriceCurrency → productId → attach → payAmount → allowedPaymentMethods → returnUrl → successRedirectUrl → timestamp` 拼接。所有业务字段参与签名，可选字段未传时仍保留 `key=`。
+A: 签名不一致 → [`50613`](#error-50613)。先排除 `signature` 和值为 `null`/未传的字段，再将其余字段按参数名 ASCII 升序拼接。显式空字符串保留为 `key=`；参数值本身不排序。
 
 ### 9.3 订单类
 

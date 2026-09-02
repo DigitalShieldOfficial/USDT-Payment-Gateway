@@ -86,19 +86,12 @@ const apiSecret = 'replace-with-real-apiSecret';   // Required: Merchant Portal 
 const outOrderNo = `ORDER-${Date.now()}`;
 const payAmount = '0.01';
 const timestamp = Date.now();
-const canonical = [
-  `merchantNo=${merchantNo}`,
-  `outOrderNo=${outOrderNo}`,
-  'productPrice=',
-  'productPriceCurrency=',
-  'productId=',
-  'attach=',
-  `payAmount=${payAmount}`,
-  'allowedPaymentMethods=',
-  'returnUrl=',
-  'successRedirectUrl=',
-  `timestamp=${timestamp}`,
-].join('&');
+const fields = {merchantNo, outOrderNo, payAmount, timestamp};
+const canonical = Object.keys(fields)
+  .filter((key) => fields[key] !== null && fields[key] !== undefined)
+  .sort()
+  .map((key) => `${key}=${fields[key]}`)
+  .join('&');
 const signature = crypto.createHmac('sha256', apiSecret)
   .update(canonical, 'utf8').digest('hex');
 
@@ -418,14 +411,14 @@ Content-Type: application/json
 |---|---|---:|---:|---|
 | `merchantNo` | string | Yes | Yes | DSPay merchant ID; non-empty, maximum string length 32 characters |
 | `outOrderNo` | string | Yes | Yes | Merchant order ID; non-empty, maximum string length 64 characters; unique per merchant and used as the idempotency key |
-| `productPrice` | decimal | No | Yes | Fiat display price; at most 14 integer digits and 6 fractional digits |
-| `productPriceCurrency` | string | No | Yes | Fiat currency; maximum string length 16 characters |
-| `productId` | string | No | Yes | Merchant product ID; maximum string length 64 characters |
-| `attach` | object | No | Yes | Merchant JSON metadata; canonical JSON UTF-8 encoding is limited to 4096 bytes, with a maximum nesting depth of 3 |
+| `productPrice` | decimal | No | When non-null | Fiat display price; at most 14 integer digits and 6 fractional digits |
+| `productPriceCurrency` | string | No | When non-null | Fiat currency; maximum string length 16 characters |
+| `productId` | string | No | When non-null | Merchant product ID; maximum string length 64 characters |
+| `attach` | object | No | When non-null | Merchant JSON metadata; canonical JSON UTF-8 encoding is limited to 4096 bytes, with a maximum nesting depth of 3 |
 | `payAmount` | decimal | Yes | Yes | Original token amount; minimum `0.0000000001`, at most 12 integer digits and 18 fractional digits |
-| `allowedPaymentMethods` | array | No | Yes | Maximum 50 `{networkId,contractAddress}` entries; absent or empty means no extra restriction |
-| `returnUrl` | string | No | Yes | Optional; redirects when the order reaches `TIMEOUT`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. When absent, sign it as an empty string and retain `returnUrl=` |
-| `successRedirectUrl` | string | No | Yes | Optional; redirects only when the order reaches `COMPLETED`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. When absent, sign it as an empty string and retain `successRedirectUrl=`; Checkout stays on the DSPay success page |
+| `allowedPaymentMethods` | array | No | When non-null | Maximum 50 `{networkId,contractAddress}` entries; absent or empty means no extra restriction; an explicitly supplied empty array is signed with an empty value |
+| `returnUrl` | string | No | When non-null | Optional; redirects when the order reaches `TIMEOUT`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. A null or absent value is omitted from the canonical string |
+| `successRedirectUrl` | string | No | When non-null | Optional; redirects only when the order reaches `COMPLETED`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. A null or absent value is omitted from the canonical string; Checkout stays on the DSPay success page when it is not configured |
 | `timestamp` | long | Yes | Yes | Unix timestamp in milliseconds; absolute difference from DSPay server time must not exceed 300000 milliseconds (5 minutes) |
 | `signature` | string | Yes | No | Lowercase HMAC-SHA256 hexadecimal string, exactly 64 characters; the field itself is not signed |
 
@@ -476,13 +469,13 @@ Create does not return network, token, final amount, receiving address or QR pay
 
 ### 4.4 Signing and Idempotency
 
-Create-signature field order is fixed. Optional fields remain as `key=` when absent:
+Create-signature canonicalization:
 
-```text
-merchantNo -> outOrderNo -> productPrice -> productPriceCurrency -> productId
--> attach -> payAmount -> allowedPaymentMethods -> returnUrl
--> successRedirectUrl -> timestamp
-```
+- Exclude `signature`.
+- Omit fields whose value is `null` or absent.
+- Include every other field; an explicitly supplied empty string remains `key=`.
+- Sort by parameter name in ascending ASCII order, then join `key=value` pairs with `&`.
+- Sort parameter names only, never values.
 
 ```text
 signature = lowercaseHex(HMAC_SHA256(apiSecret, canonical UTF-8 string))
@@ -515,7 +508,7 @@ Redirects are navigation only, never proof of payment. Query DSPay server-to-ser
 <a id="java-end-to-end-demo"></a>
 ### 4.6 Java End-to-End Demo
 
-The maintained [Java Demo](../Demo/back-end/java/README.md) builds and canonicalizes the complete request on the merchant server, calls the public create endpoint, checks the top-level `code`, redirects to `checkoutUrl`, verifies raw-body webhooks and performs signed public queries.
+The maintained [Java Demo](../Demo/back-end/java/README.md) builds and canonicalizes the complete request on the merchant server, calls the public create endpoint, checks the top-level `code`, redirects to `checkoutUrl`, verifies ASCII-canonical webhooks and performs signed public queries.
 
 - [`DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
 - [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh)
@@ -542,7 +535,7 @@ The maintained [Java Demo](../Demo/back-end/java/README.md) builds and canonical
 
 ### 4.9 ⚠️ Pitfalls
 
-1. Every create business field is signed, including product data, `attach`, payment restrictions, and both redirect URLs. Keep absent optional fields as empty keys.
+1. Every non-null create business field is signed, including product data, `attach`, payment restrictions, and redirect URLs. Omit null or absent optional fields from the canonical string.
 2. Never serialize money through binary floating point; use plain decimal strings.
 3. The signature window is not the order lifetime.
 4. `CREATED` does not imply that a payment method has already been locked.
@@ -677,6 +670,8 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
 | `reopened` | boolean | Yes | No | Whether this is a merchant-initiated manual-supplement reopen after `CLOSED`. |
 | `timestamp` | long | Yes | No | [DSPay](#term-dspay)-side send timestamp (Unix milliseconds). |
 
+Nullable fields may remain present in the JSON body, but null-valued fields are omitted from the canonical signature string. Every non-null field is signed.
+
 > **Amount-field notes (§5.1.5)**:
 > - `originPayAmount`: product price — identical to what the merchant supplied at order creation.
 > - `amountSuffix`: the suffix appended to differentiate same-amount concurrent orders.
@@ -687,15 +682,17 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
 ### 5.6 Four-Step Webhook Verification
 
 **Algorithm**: [HMAC-SHA256](#term-hmac-sha256)
-**Signed content**: the raw HTTP body bytes (the exact string before deserialization)
+**Signed content**: a canonical field string built from the webhook JSON using the same rules as order creation
 **Output format**: lowercase hex
 
 **Four-step verification flow**:
 
-1. **Extract the raw body**: use the original HTTP body string. **Never** deserialize and re-`JSON.stringify()` — field-order changes will break the signature.
-2. **Compute [HMAC-SHA256](#term-hmac-sha256)**: use `apiSecret.getBytes(UTF_8)` as the key (**no Base64 decode**) over the raw body.
-3. **Compare signatures**: constant-time comparison against the `X-DSPay-Signature` header (defends against timing attacks); case-insensitive.
-4. **Validate the timestamp window**: the payload's `timestamp` field must be within ±5 minutes of the current time (replay defense).
+1. **Parse the body** into a top-level JSON object.
+2. **Build the canonical string**: exclude `signature` and null-valued fields; sort remaining parameter names in ascending ASCII order and join `key=value` pairs with `&`. Canonicalize object/array values exactly as for order creation; never sort values.
+3. **Compute [HMAC-SHA256](#term-hmac-sha256)** over the canonical UTF-8 string using `apiSecret.getBytes(UTF_8)` directly (**no Base64 decode**).
+4. **Compare and prevent replay**: constant-time compare with `X-DSPay-Signature`, then require `timestamp` to be within ±5 minutes.
+
+Reuse the canonicalization implementation from [§4.4 Signing and Idempotency](#signing-and-idempotency) and the maintained Java, Node.js, or PHP Demo. The snippets below show only HMAC calculation and constant-time comparison.
 
 #### Java Verification Sample
 
@@ -707,19 +704,19 @@ import java.security.MessageDigest;
 
 public class DspaySignatureVerifier {
     /**
-     * @param payload   The raw HTTP body string.
+     * @param canonical The canonical field string built with the shared ASCII rules.
      * @param signature The X-DSPay-Signature header value (lowercase hex).
      * @param secret    The apiSecret string (used directly; do NOT Base64-decode).
      */
-    public static boolean verify(String payload, String signature, String secret) throws Exception {
-        if (payload == null || secret == null || signature == null
+    public static boolean verify(String canonical, String signature, String secret) throws Exception {
+        if (canonical == null || secret == null || signature == null
                 || !signature.matches("(?i)^[0-9a-f]{64}$")) {
             return false;
         }
         Mac mac = Mac.getInstance("HmacSHA256");
         // Critical: use secret.getBytes directly — do NOT Base64-decode.
         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-        byte[] expected = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+        byte[] expected = mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8));
         String expectedHex = bytesToHex(expected);
         // Constant-time compare to defend against timing attacks.
         return MessageDigest.isEqual(
@@ -742,14 +739,14 @@ public class DspaySignatureVerifier {
 ```javascript
 const crypto = require('crypto');
 
-function verifySignature(payload, signature, secret) {
+function verifySignature(canonical, signature, secret) {
     if (typeof signature !== 'string' || !/^[0-9a-f]{64}$/i.test(signature)) {
         return false;
     }
     // Critical: use secret directly as the key — do NOT Base64-decode.
     const expected = crypto
         .createHmac('sha256', secret)
-        .update(payload, 'utf8')
+        .update(canonical, 'utf8')
         .digest('hex');
     // Use timingSafeEqual to defend against timing attacks.
     const expectedBuf = Buffer.from(expected, 'utf8');
@@ -933,16 +930,12 @@ POST /dspay/public/order/query
 | Field | Required | Signed | Constraints and meaning |
 |---|---:|---:|---|
 | `merchantNo` | Yes | Yes | Non-empty merchant ID; maximum 32 characters |
-| `orderNo` | Conditional | When non-empty | At least one of `orderNo/outOrderNo`; maximum 64 characters |
-| `outOrderNo` | Conditional | When non-empty | At least one of `orderNo/outOrderNo`; maximum 64 characters |
+| `orderNo` | Conditional | When non-null | At least one of `orderNo/outOrderNo` must be non-empty; maximum 64 characters |
+| `outOrderNo` | Conditional | When non-null | At least one of `orderNo/outOrderNo` must be non-empty; maximum 64 characters |
 | `timestamp` | Yes | Yes | Unix milliseconds; absolute server-time difference must not exceed 300000 ms |
 | `signature` | Yes | No | Lowercase HMAC-SHA256 hexadecimal string, exactly 64 characters |
 
-When both identifiers are present, the query uses an AND match. Sign only non-empty optional identifier fields, in this order:
-
-```text
-merchantNo -> orderNo(if present) -> outOrderNo(if present) -> timestamp
-```
+When both identifiers are present, the query uses an AND match. Exclude `signature` and null/absent fields, then sort all remaining parameter names in ascending ASCII order. Preserve an explicitly supplied empty string as `key=`.
 
 Example when querying by `orderNo`:
 
@@ -988,7 +981,7 @@ Use webhooks as the normal path. Query with backoff only after a missed webhook,
 
 ### 5.12 ⚠️ Pitfalls (6)
 
-1. **Verify the raw body**: use the original HTTP body string — never deserialize and re-`JSON.stringify()` (field-order changes break the signature). A Java web framework can expose the original request body directly; this repository's Node.js Demo accumulates raw bytes from the built-in HTTP request stream and does not require `raw-body` or any other npm package. This is the **single most common** cause of webhook verification failures.
+1. **Verify the shared canonical string**: webhooks are not signed over the raw body. Parse JSON, omit null fields, sort parameter names in ascending ASCII order, and build `key=value&...`; canonicalize objects/arrays exactly as for create-order signing.
 
 2. **HMAC secret is used directly — do NOT Base64-decode**: [apiSecret](#term-apisecret) is a 43-char Base64Url string, but when used as an HMAC key, call `secret.getBytes(UTF_8)` directly. Base64Url is only the storage encoding — [HMAC-SHA256](#term-hmac-sha256) is encoding-agnostic about the key byte sequence.
 
@@ -1193,7 +1186,7 @@ Use small amounts of mainnet stablecoins per chain:
 
 | Cause | Triage |
 |------|---------|
-| Payload was deserialized then re-serialized (field order changed) | Verify against the raw body string. |
+| HMAC was calculated over the raw body | Parse JSON and build the shared ASCII-sorted canonical string first. |
 | Secret was Base64-decoded | Use the secret string directly; do not Base64-decode. |
 | Large clock skew (rejected by replay defense) | Check whether `timestamp` is within 5 minutes. |
 | Key was regenerated (using old key) | View the latest key in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/). |
@@ -1235,7 +1228,7 @@ A: `productPrice` and `payAmount` must be string literals like `'99.99'` or use 
 A: **No.** The [apiSecret](#term-apisecret) string is used directly as the HMAC key. Base64Url is only the storage encoding — [HMAC-SHA256](#term-hmac-sha256) is encoding-agnostic about the key byte sequence. Pass `secret.getBytes(UTF_8)` directly to `SecretKeySpec`.
 
 **Q: What happens if the signature field order is wrong?**
-A: The signature will not match → [`50613`](#error-50613). Use the complete fixed order: `merchantNo → outOrderNo → productPrice → productPriceCurrency → productId → attach → payAmount → allowedPaymentMethods → returnUrl → successRedirectUrl → timestamp`. Every business field is signed; absent optional fields remain as `key=`.
+A: The signature will not match → [`50613`](#error-50613). Exclude `signature` and null/absent fields, then sort all remaining fields by parameter name in ascending ASCII order. Preserve explicitly supplied empty strings as `key=`; never sort values.
 
 ### 9.3 Orders
 
@@ -1254,7 +1247,7 @@ A: Suffix-mechanism concurrency or precision issue. [`50610`](#error-50610) `ORD
 ### 9.4 Webhooks
 
 **Q: Webhook signature verification keeps failing?**
-A: 90% of the time the payload was deserialized then re-serialized, changing field order. Verify against the raw HTTP body string — never against `JSON.stringify(parsed_object)`.
+A: Do not HMAC the raw body. Parse the JSON, omit null fields, canonicalize object/array values, sort top-level parameter names in ascending ASCII order, and HMAC the resulting `key=value&...` string.
 
 **Q: Webhook keeps retrying — what do I do?**
 A: Check that your response matches the strict `{"code":"SUCCESS"}` format. `code` must be the uppercase string `"SUCCESS"` — numeric `200`, lowercase, and nested structures are all rejected.
@@ -1292,12 +1285,12 @@ A: The key has been frozen. If you froze it yourself, restore it from the portal
 <a id="appendix-a-java-reference-integration"></a>
 ## Appendix A: Java Reference Integration
 
-Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers signed public create/query calls, redirecting to the returned `checkoutUrl`, raw-body webhook verification, and strict acknowledgement.
+Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers signed public create/query calls, redirecting to the returned `checkoutUrl`, ASCII-canonical webhook verification, and strict acknowledgement.
 
 | File | Purpose |
 |------|---------|
 | [`README.md`](../Demo/back-end/java/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Create/query signing, public API calls, Checkout redirect, raw-body verification, and strict ACK |
+| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Create/query signing, public API calls, Checkout redirect, ASCII-canonical webhook verification, and strict ACK |
 | [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | Background process lifecycle |
 
 The create flow is: **merchant backend signs → calls the public create API → receives `checkoutUrl` → redirects the customer**. The customer then confirms a network and token in DSPay Checkout.
@@ -1316,7 +1309,7 @@ Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`]
 | File | Purpose |
 |------|---------|
 | [`README.md`](../Demo/back-end/nodejs/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, public create/query API calls, 302 redirect, and raw-body webhook handling |
+| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, public create/query API calls, 302 redirect, and canonical webhook handling |
 | [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | Order signing and constant-time callback signature verification |
 | [`package.json`](../Demo/back-end/nodejs/package.json) | Start command and runtime metadata |
 

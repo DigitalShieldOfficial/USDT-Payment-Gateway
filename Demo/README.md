@@ -79,7 +79,7 @@ export PUBLIC_BASE_URL="http://localhost:3000"
 |---|---|---|
 | GET | `/create` | Create DSPay order server-to-server, then 302 to returned `checkoutUrl` |
 | GET | `/query?orderNo=...` | Node/PHP demo: signed authoritative order query |
-| POST | `/notify` | Verify webhook over the exact raw body |
+| POST | `/notify` | Verify webhook using the shared ASCII-sorted canonical field string |
 | GET | `/payment/return` | Timeout landing; Node/PHP demo queries DSPay |
 | GET | `/payment/success` | Success landing; Node/PHP demo queries DSPay |
 

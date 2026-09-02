@@ -21,20 +21,28 @@ test('preserves allowed payment method order and removes duplicates', () => {
     ]), 'evm--1|0xabc,tron|TXYZ');
 });
 
-test('create signature always includes all fixed fields', () => {
+test('create signature omits null fields and sorts parameter names by ASCII', () => {
     const signed = signCreateOrder({ merchantNo: 'DSM001', outOrderNo: 'M001', payAmount: '1.00', timestamp: 1787700000000 }, secret);
-    assert.equal(signed.canonical, 'merchantNo=DSM001&outOrderNo=M001&productPrice=&productPriceCurrency=&productId=&attach=&payAmount=1.00&allowedPaymentMethods=&returnUrl=&successRedirectUrl=&timestamp=1787700000000');
+    assert.equal(signed.canonical, 'merchantNo=DSM001&outOrderNo=M001&payAmount=1.00&timestamp=1787700000000');
     assert.equal(signed.signature, digest(signed.canonical));
 });
 
-test('query signs only non-empty order identifiers', () => {
+test('create signature keeps an explicitly supplied empty string', () => {
+    const signed = signCreateOrder({ merchantNo: 'DSM001', outOrderNo: 'M001', payAmount: '1.00', productId: '', timestamp: 1787700000000 }, secret);
+    assert.equal(signed.canonical, 'merchantNo=DSM001&outOrderNo=M001&payAmount=1.00&productId=&timestamp=1787700000000');
+});
+
+test('query omits null fields and keeps an explicitly supplied empty string', () => {
     const signed = signQuery({ merchantNo: 'DSM001', orderNo: '1949695024925671424', timestamp: 1787700000000 }, secret);
     assert.equal(signed.canonical, 'merchantNo=DSM001&orderNo=1949695024925671424&timestamp=1787700000000');
     assert.equal(signed.signature, digest(signed.canonical));
+    assert.equal(signQuery({ merchantNo: 'DSM001', orderNo: '', outOrderNo: 'M001', timestamp: 1787700000000 }, secret).canonical,
+        'merchantNo=DSM001&orderNo=&outOrderNo=M001&timestamp=1787700000000');
 });
 
-test('callback verification uses the exact raw body', () => {
-    const raw = '{"notifyNo":"N001","status":"COMPLETED"}';
-    assert.equal(verifyCallback(raw, digest(raw), secret), true);
-    assert.equal(verifyCallback(raw + ' ', digest(raw), secret), false);
+test('callback verification uses ASCII-sorted non-null fields', () => {
+    const raw = '{"status":"COMPLETED","txHash":null,"notifyNo":"N001","attach":{"z":1,"a":true}}';
+    const canonical = 'attach={"a":true,"z":1}&notifyNo=N001&status=COMPLETED';
+    assert.equal(verifyCallback(raw, digest(canonical), secret), true);
+    assert.equal(verifyCallback('{"notifyNo":"N001","status":"REFUNDED"}', digest(canonical), secret), false);
 });

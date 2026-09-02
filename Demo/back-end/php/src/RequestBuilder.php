@@ -23,19 +23,20 @@ final class RequestBuilder
     public function buildCreatePayload(array $data)
     {
         $this->assertConfigured();
-        return implode('&', array(
-            'merchantNo=' . $this->text($this->value($data, 'merchantNo', $this->merchantNo)),
-            'outOrderNo=' . $this->requiredOrderNo($this->value($data, 'outOrderNo', '')),
-            'productPrice=' . $this->decimal($this->value($data, 'productPrice', '')),
-            'productPriceCurrency=' . $this->text($this->value($data, 'productPriceCurrency', '')),
-            'productId=' . $this->text($this->value($data, 'productId', '')),
-            'attach=' . (array_key_exists('attach', $data) ? $this->canonicalJson($data['attach']) : ''),
-            'payAmount=' . $this->requiredPayAmount($this->value($data, 'payAmount', '')),
-            'allowedPaymentMethods=' . $this->canonicalMethods($this->value($data, 'allowedPaymentMethods', array())),
-            'returnUrl=' . $this->text($this->value($data, 'returnUrl', '')),
-            'successRedirectUrl=' . $this->text($this->value($data, 'successRedirectUrl', '')),
-            'timestamp=' . $this->text($this->value($data, 'timestamp', '')),
-        ));
+        $fields = array(
+            'merchantNo' => $this->text($this->value($data, 'merchantNo', $this->merchantNo)),
+            'outOrderNo' => $this->requiredOrderNo($this->value($data, 'outOrderNo', '')),
+            'payAmount' => $this->requiredPayAmount($this->value($data, 'payAmount', '')),
+        );
+        if (array_key_exists('productPrice', $data) && $data['productPrice'] !== null) $fields['productPrice'] = $this->decimal($data['productPrice']);
+        if (array_key_exists('productPriceCurrency', $data) && $data['productPriceCurrency'] !== null) $fields['productPriceCurrency'] = $this->text($data['productPriceCurrency']);
+        if (array_key_exists('productId', $data) && $data['productId'] !== null) $fields['productId'] = $this->text($data['productId']);
+        if (array_key_exists('attach', $data) && $data['attach'] !== null) $fields['attach'] = $this->canonicalJson($data['attach']);
+        if (array_key_exists('allowedPaymentMethods', $data) && $data['allowedPaymentMethods'] !== null) $fields['allowedPaymentMethods'] = $this->canonicalMethods($data['allowedPaymentMethods']);
+        if (array_key_exists('returnUrl', $data) && $data['returnUrl'] !== null) $fields['returnUrl'] = $this->text($data['returnUrl']);
+        if (array_key_exists('successRedirectUrl', $data) && $data['successRedirectUrl'] !== null) $fields['successRedirectUrl'] = $this->text($data['successRedirectUrl']);
+        if (array_key_exists('timestamp', $data) && $data['timestamp'] !== null) $fields['timestamp'] = $this->text($data['timestamp']);
+        return $this->joinSortedFields($fields);
     }
 
     public function signCreate(array $data)
@@ -46,13 +47,11 @@ final class RequestBuilder
     public function buildQueryPayload(array $data)
     {
         $this->assertConfigured();
-        $fields = array('merchantNo=' . $this->text($this->value($data, 'merchantNo', $this->merchantNo)));
-        $orderNo = $this->text($this->value($data, 'orderNo', ''));
-        $outOrderNo = $this->text($this->value($data, 'outOrderNo', ''));
-        if ($orderNo !== '') $fields[] = 'orderNo=' . $orderNo;
-        if ($outOrderNo !== '') $fields[] = 'outOrderNo=' . $outOrderNo;
-        $fields[] = 'timestamp=' . $this->text($this->value($data, 'timestamp', ''));
-        return implode('&', $fields);
+        $fields = array('merchantNo' => $this->text($this->value($data, 'merchantNo', $this->merchantNo)));
+        if (array_key_exists('orderNo', $data) && $data['orderNo'] !== null) $fields['orderNo'] = $this->text($data['orderNo']);
+        if (array_key_exists('outOrderNo', $data) && $data['outOrderNo'] !== null) $fields['outOrderNo'] = $this->text($data['outOrderNo']);
+        if (array_key_exists('timestamp', $data) && $data['timestamp'] !== null) $fields['timestamp'] = $this->text($data['timestamp']);
+        return $this->joinSortedFields($fields);
     }
 
     public function signQuery(array $data)
@@ -63,7 +62,22 @@ final class RequestBuilder
     public function verifyCallback($rawBody, $signature)
     {
         if ($rawBody === false || $rawBody === '' || $signature === null || $signature === '') return false;
-        return hash_equals($this->hmac($rawBody), strtolower((string)$signature));
+        $body = json_decode($rawBody, true);
+        if (!is_array($body) || json_last_error() !== JSON_ERROR_NONE) return false;
+        return hash_equals($this->hmac($this->buildCallbackPayload($body)), strtolower((string)$signature));
+    }
+
+    public function buildCallbackPayload(array $data)
+    {
+        $fields = array();
+        foreach ($data as $key => $value) {
+            if ($key === 'signature' || $value === null) continue;
+            if (is_string($value)) $fields[$key] = $this->text($value);
+            elseif (is_bool($value)) $fields[$key] = $value ? 'true' : 'false';
+            elseif (is_int($value) || is_float($value)) $fields[$key] = $this->plainNumber($value);
+            else $fields[$key] = $this->canonicalJson($value);
+        }
+        return $this->joinSortedFields($fields);
     }
 
     public function canonicalMethods($methods)
@@ -113,6 +127,14 @@ final class RequestBuilder
     private function value(array $data, $key, $default)
     {
         return array_key_exists($key, $data) && $data[$key] !== null ? $data[$key] : $default;
+    }
+
+    private function joinSortedFields(array $fields)
+    {
+        ksort($fields, SORT_STRING);
+        $items = array();
+        foreach ($fields as $key => $value) $items[] = $key . '=' . $value;
+        return implode('&', $items);
     }
 
     private function text($value)
