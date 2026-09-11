@@ -45,7 +45,7 @@
 | <a id="term-hmac-sha256"></a>**HMAC-SHA256** | 哈希消息认证码算法；DSPay 用 `apiSecret` 作 key 对规范化字符串计算，输出 hex 小写 |
 | <a id="term-evm"></a>**EVM** | Ethereum Virtual Machine，以太坊虚拟机；EVM 系链指兼容以太坊智能合约的链（Ethereum / BSC / Polygon / Arbitrum / Base） |
 | <a id="term-usdt"></a>**USDT** / <a id="term-usdc"></a>**USDC** | 与美元锚定的稳定币（Tether USD / Centre USD Coin） |
-| **尾数（<a id="term-amountsuffix"></a>amountSuffix）** | DSPay 为区分同金额并发订单附加的小额尾数（如 100.001 中的 0.001）。稳定币按 6 位精度处理：商户金额最多使用前 2 位小数，后 4 位由 DSPay 生成尾数，详见 [§4.1](#订单尾数机制详解) |
+| **尾数（<a id="term-amountsuffix"></a>amountSuffix）** | DSPay 为区分同金额并发订单附加的小额尾数。稳定币固定按 6 位精度处理：商户金额最多使用前 2 位小数，后 4 位用于 `1～9999` 尾数槽位。例如槽位 `137` 生成 `0.000137`，详见 [§4.1](#订单尾数机制详解) |
 | **补单（<a id="term-supplement"></a>supplement）** | CLOSED 订单后续链上到账时，由商户在后台确认到账、订单重开为 COMPLETED 的操作 |
 | **回调（<a id="term-webhook"></a>webhook）** | DSPay 向商户 `notifyUrl` 发送的 HTTP POST 通知，事件类型：`CLOSED` / `COMPLETED` / `REFUNDED`；`CREATED` / `TIMEOUT` 仅推进订单状态，不发送回调 |
 | <a id="term-notifyurl"></a>**notifyUrl** | 商户接收 DSPay 回调通知的公网可达地址；支持 `http://` 和 `https://`，生产环境建议 HTTPS |
@@ -406,7 +406,7 @@ GET /dspay/public/supported-chains
 <a id="订单尾数机制详解"></a>
 ### 4.1 订单尾数机制详解
 
-DSPay 使用识别尾数区分相同网络、代币、收款地址和原始金额的并发订单。例如商户创建金额为 `100.00` 的订单，用户确认支付方式后，最终应付金额可能为 `100.001`。
+DSPay 使用识别尾数区分相同网络、代币、收款地址和原始金额的并发订单。金额固定使用 6 位精度：商户原始金额最多使用 2 位小数，后 4 位用于尾数槽位。例如商户创建金额为 `100.00` 的订单，槽位为 `137` 时，识别尾数为 `0.000137`，最终应付金额为 `100.000137`。
 
 - `originPayAmount`：创建订单时提交的原始应付金额。
 - `amountSuffix`：用户确认支付方式时分配的识别尾数。
@@ -444,7 +444,7 @@ Content-Type: application/json
 | `productPriceCurrency` | string | 否 | 值非null时 | 商品价格币种；字符串长度最多 16 个字符 |
 | `productId` | string | 否 | 值非null时 | 商户产品 ID；字符串长度最多 64 个字符 |
 | `attach` | object | 否 | 值非null时 | 附加 JSON 对象；规范化 JSON 的 UTF-8 编码长度最多 4096 字节，嵌套深度最多 3 层 |
-| `payAmount` | decimal | 是 | 是 | 原始应付代币金额；最小值 `0.0000000001`，整数部分最多 12 位，小数部分最多 18 位 |
+| `payAmount` | decimal | 是 | 是 | 原始应付代币金额；最小值 `0.01`，整数部分最多 12 位，小数部分最多 2 位 |
 | `allowedPaymentMethods` | array | 否 | 值非null时 | 限制用户可选组合；数组最多 50 项；不传或传空数组表示不额外限制；显式空数组参与签名时值为空字符串 |
 | `returnUrl` | string | 否 | 条件 | 可选；订单进入 `TIMEOUT` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。值不为 `null` 时参与签名；值为 `null` 或未传时不进入签名串 |
 | `successRedirectUrl` | string | 否 | 条件 | 可选；仅订单进入 `COMPLETED` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。值不为 `null` 时参与签名；值为 `null` 或未传时不进入签名串；未配置时停留 DSPay 成功页 |
@@ -688,10 +688,10 @@ Node.js 和 PHP Demo 遵循同一预下单流程：服务端签名、调用 `POS
   "attach": {"customerId": "CUST-1001", "source": "web"},
   "eventType": "COMPLETED",
   "status": "COMPLETED",
-  "payAmount": "100.001",
+  "payAmount": "100.000137",
   "originPayAmount": "100",
-  "amountSuffix": "0.001",
-  "actualReceivedAmount": "100.001",
+  "amountSuffix": "0.000137",
+  "actualReceivedAmount": "100.000137",
   "actualUsdAmount": "100",
   "refundAmount": null,
   "refundUsdAmount": null,
@@ -1114,7 +1114,7 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 6.5 ⚠️ 坑点（5 条）
 
-1. **金额对账用 `originPayAmount`**：`payAmount` 含尾数（如 100.001），`originPayAmount` 是商品原价（100）。对账比对 `originPayAmount`，否则会因尾数差异报"金额不匹配"。`payAmount` 仅用于链上交易核对。
+1. **金额对账用 `originPayAmount`**：`payAmount` 含尾数（如 100.000137），`originPayAmount` 是商品原价（100）。对账比对 `originPayAmount`，否则会因尾数差异报"金额不匹配"。`payAmount` 仅用于链上交易核对。
 
 2. **regenerate 后飞行中回调验签失败**：regenerate 瞬间已发出的回调用旧密钥签名，商户用新密钥验签会失败。[DSPay](#term-dspay) 使用新密钥按 30s/1min/5min/15min/1h/6h/12h/24h 的阶梯间隔重试 8 次。商户端容忍短暂数分钟验签失败，不要因此回滚到旧密钥。
 
@@ -1210,7 +1210,7 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 ### 8.1 本地环境准备
 
 - 启动 [DSPay](#term-dspay) 服务：`mvn spring-boot:run -Dspring-boot.run.profiles=local`
-- 测试链信息：本地默认使用各链主网 RPC（生产配置同）
+- 测试链信息：以 `GET /dspay/public/supported-chains` 返回的当前可用网络和代币为准
 - 测试代币：钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 测试订单及识别尾数；另备足够的链上 Gas 代币
 
 ### 8.2 回调测试（ngrok / cpolar）
@@ -1299,7 +1299,7 @@ A: 签名不一致 → [`50613`](#error-50613)。先排除 `signature` 和值为
 ### 9.3 订单类
 
 **Q: 收银台显示的 payAmount 为什么不是创建请求中的 originPayAmount？**
-A: 尾数机制。创建接口先记录原始金额；用户确认支付方式时，[DSPay](#term-dspay) 分配识别尾数，最终应付金额可能变为 100.001。用户必须按收银台显示金额付款，商户以回调或查询结果对账。
+A: 尾数机制。创建接口先记录原始金额；用户确认支付方式时，[DSPay](#term-dspay) 从 1～9999 分配尾数槽位。槽位 137 对应尾数 0.000137，原始金额 100 的最终应付金额为 100.000137。用户必须按收银台显示金额付款，商户以回调或查询结果对账。
 
 **Q: 打开收银台提示 [`50609`](#error-50609) NO_ENABLED_ADDRESS？**
 A: 链支持但商户没为该 [networkId](#term-networkid)（链）配 ENABLED 收款地址。去 [DSPay 后台](https://mcashier.ds.pro/login/)配置收款地址。
@@ -1307,8 +1307,8 @@ A: 链支持但商户没为该 [networkId](#term-networkid)（链）配 ENABLED 
 **Q: 收银台提示 [`50707`](#error-50707) CHAIN_NOT_SUPPORTED？**
 A: 当前选择的链不在支持范围内。让用户返回收银台重新选择可用链；如仍出现，请联系 DSPay 支持人员。
 
-**Q: 收银台创建订单提示 [`50610`](#error-50610)/[`50611`](#error-50611)/[`50612`](#error-50612)？**
-A: 尾数机制并发或精度问题。[`50610`](#error-50610) `ORDER_CREATE_BUSY`（尾数锁冲突，重试即可）/ [`50611`](#error-50611) `SUFFIX_EXHAUSTED`（尾数槽位耗尽，等并发降）/ [`50612`](#error-50612) `SUFFIX_PRECISION_SATURATED`（商户提交的 `payAmount` 超过 2 位小数）。
+**Q: 用户点击 Pay Now 后提示 [`50610`](#error-50610)/[`50611`](#error-50611)/[`50612`](#error-50612)？**
+A: [`50610`](#error-50610) `ORDER_CREATE_BUSY` 表示当前并发繁忙；保持同一订单和支付选择稍后重试，它不表示尾数槽位已经耗尽。[`50611`](#error-50611) `SUFFIX_EXHAUSTED` 表示当前相同支付组合、收款地址和原始金额下没有可用尾数；立即重试通常无效，需等待待支付订单完成或关闭后再试。[`50612`](#error-50612) `SUFFIX_PRECISION_SATURATED` 表示原始金额超过 2 位小数，无法在固定 6 位精度内保留 4 位尾数空间。
 
 ### 9.4 回调类
 
@@ -1422,9 +1422,9 @@ Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/bac
 | <a id="error-50606"></a>50606 | TX_HASH_INVALID | 交易哈希无效 |
 | <a id="error-50608"></a>50608 | TX_HASH_ALREADY_USED | 交易哈希已被使用（仅 supplement 补单校验；refund 退款不再校验 refundTxHash 防重放） |
 | <a id="error-50609"></a>50609 | NO_ENABLED_ADDRESS | 无可用收款地址（商户未为该 [networkId](#term-networkid)（链）配 ENABLED 地址） |
-| <a id="error-50610"></a>50610 | ORDER_CREATE_BUSY | 订单创建繁忙（尾数锁冲突，重试即可） |
-| <a id="error-50611"></a>50611 | SUFFIX_EXHAUSTED | 尾数槽位已耗尽 |
-| <a id="error-50612"></a>50612 | SUFFIX_PRECISION_SATURATED | 尾数精度不足；稳定币场景下通常表示商户提交的 `payAmount` 超过 2 位小数 |
+| <a id="error-50610"></a>50610 | ORDER_CREATE_BUSY | 当前并发繁忙；保持同一请求稍后重试 |
+| <a id="error-50611"></a>50611 | SUFFIX_EXHAUSTED | 当前相同支付组合、收款地址和原始金额下没有可用尾数；等待待支付订单完成或关闭后再试 |
+| <a id="error-50612"></a>50612 | SUFFIX_PRECISION_SATURATED | 原始金额超过 2 位小数，无法在固定 6 位精度内保留 4 位尾数空间 |
 | <a id="error-50613"></a>50613 | ORDER_SIGNATURE_INVALID | 创建订单或主动查询的签名校验失败 |
 | <a id="error-50614"></a>50614 | ORDER_TIMESTAMP_EXPIRED | 创建订单或主动查询的时间戳超出 ±5 分钟窗口 |
 

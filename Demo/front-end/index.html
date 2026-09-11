@@ -494,7 +494,7 @@
 
     <script>
       // Keep payAmount as a positive plain decimal string. The public create API
-      // accepts up to 12 integer and 18 fractional digits; scientific notation
+      // accepts up to 12 integer and 2 fractional digits; scientific notation
       // should not be used by merchant integrations.
       const CREATE_ORDER_URL = "http://localhost:3000/create?payAmount=0.01&productPrice=0.01&productPriceCurrency=USD&productId=NOVA-LIFETIME-001";
 
