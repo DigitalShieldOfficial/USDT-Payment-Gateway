@@ -45,7 +45,7 @@
 | <a id="term-hmac-sha256"></a>**HMAC-SHA256** | Hash-based Message Authentication Code. DSPay uses [apiSecret](#term-apisecret) as the key over a canonical string and outputs lowercase hex. |
 | <a id="term-evm"></a>**EVM** | Ethereum Virtual Machine. "EVM-compatible chains" are chains that support Ethereum smart contracts (Ethereum / BSC / Polygon / Arbitrum / Base). |
 | <a id="term-usdt"></a>**USDT** / <a id="term-usdc"></a>**USDC** | USD-pegged stablecoins (Tether USD / Centre USD Coin). |
-| **Fractional Suffix (<a id="term-amountsuffix"></a>amountSuffix)** | A tiny decimal appended by DSPay to differentiate concurrent orders of the same amount (e.g. the `0.001` in `100.001`). Stablecoins are treated as 6-decimal tokens: merchants use at most the first 2 decimal places and DSPay uses the remaining 4 for the suffix. See [§4.1](#order-suffix-mechanism-in-depth). |
+| **Fractional Suffix (<a id="term-amountsuffix"></a>amountSuffix)** | DSPay uses a fixed six-decimal amount: merchants use at most the first 2 decimal places and slots `1–9999` use the last 4 places. Slot `137` produces `0.000137`. See [§4.1](#order-suffix-mechanism-in-depth). |
 | **Manual Fulfillment (<a id="term-supplement"></a>supplement)** | The operator-confirmed action that reopens a `CLOSED` order as `COMPLETED` after an on-chain payment lands post-timeout. |
 | **Webhook (<a id="term-webhook"></a>webhook)** | The HTTP POST notification DSPay sends to the merchant's [notifyUrl](#term-notifyurl). Event types: `CLOSED` / `COMPLETED` / `REFUNDED`. `CREATED` / `TIMEOUT` advance order state but do not emit webhooks. |
 | <a id="term-notifyurl"></a>**notifyUrl** | Publicly reachable merchant endpoint that receives DSPay webhooks. Both `http://` and `https://` are accepted; use HTTPS in production. |
@@ -382,6 +382,8 @@ This chapter covers server-to-server pre-order creation, request signing, idempo
 
 DSPay uses a small fractional suffix to distinguish concurrent orders that share the same network, token, receiving address and original amount.
 
+Amounts use a fixed six-decimal scale: merchant amounts use at most 2 decimal places and the final 4 places identify the suffix slot. For example, slot `137` produces suffix `0.000137`; original amount `100.00` becomes `100.000137`.
+
 - `originPayAmount`: amount submitted at creation.
 - `amountSuffix`: matching suffix allocated when the customer confirms a payment method.
 - `payAmount = originPayAmount + amountSuffix`: final amount shown in Checkout and matched on-chain.
@@ -415,7 +417,7 @@ Content-Type: application/json
 | `productPriceCurrency` | string | No | When non-null | Fiat currency; maximum string length 16 characters |
 | `productId` | string | No | When non-null | Merchant product ID; maximum string length 64 characters |
 | `attach` | object | No | When non-null | Merchant JSON metadata; canonical JSON UTF-8 encoding is limited to 4096 bytes, with a maximum nesting depth of 3 |
-| `payAmount` | decimal | Yes | Yes | Original token amount; minimum `0.0000000001`, at most 12 integer digits and 18 fractional digits |
+| `payAmount` | decimal | Yes | Yes | Original token amount; minimum `0.01`, at most 12 integer digits and 2 fractional digits |
 | `allowedPaymentMethods` | array | No | When non-null | Maximum 50 `{networkId,contractAddress}` entries; absent or empty means no extra restriction; an explicitly supplied empty array is signed with an empty value |
 | `returnUrl` | string | No | When non-null | Optional; redirects when the order reaches `TIMEOUT`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. A null or absent value is omitted from the canonical string |
 | `successRedirectUrl` | string | No | When non-null | Optional; redirects only when the order reaches `COMPLETED`. Must be a complete URL beginning with `http://` or `https://`; ports, paths, and query parameters are allowed. The entire URL is limited to 8192 characters. A null or absent value is omitted from the canonical string; Checkout stays on the DSPay success page when it is not configured |
@@ -625,10 +627,10 @@ When an order transitions to **`CLOSED` / `COMPLETED` / `REFUNDED`**, [DSPay](#t
   "attach": {"customerId": "CUST-1001", "source": "web"},
   "eventType": "COMPLETED",
   "status": "COMPLETED",
-  "payAmount": "100.001",
+  "payAmount": "100.000137",
   "originPayAmount": "100",
-  "amountSuffix": "0.001",
-  "actualReceivedAmount": "100.001",
+  "amountSuffix": "0.000137",
+  "actualReceivedAmount": "100.000137",
   "actualUsdAmount": "100",
   "refundAmount": null,
   "refundUsdAmount": null,
@@ -1050,7 +1052,7 @@ Rotate [apiSecret](#term-apisecret) regularly (e.g. quarterly) from the [DSPay M
 
 ### 6.5 ⚠️ Pitfalls (5)
 
-1. **Use `originPayAmount` for reconciliation**: `payAmount` includes the suffix (e.g. `100.001`), while `originPayAmount` is the product price (`100`). Compare against `originPayAmount` for reconciliation — otherwise the suffix difference raises spurious "amount mismatch" alerts. `payAmount` is for on-chain transaction audit only.
+1. **Use `originPayAmount` for reconciliation**: `payAmount` includes the suffix (e.g. `100.000137`), while `originPayAmount` is the product price (`100`). Compare against `originPayAmount` for reconciliation — otherwise the suffix difference raises spurious "amount mismatch" alerts. `payAmount` is for on-chain transaction audit only.
 
 2. **In-flight webhooks fail verification after `regenerate`**: at the instant of `regenerate`, already-dispatched webhooks are signed with the old key — the merchant's verification with the new key will fail. [DSPay](#term-dspay) auto-retries on an escalating schedule (30s / 1min / 5min / ... up to 11 attempts) with the new key. Tolerate the brief failure window — **do not roll back to the old key**.
 
@@ -1144,7 +1146,7 @@ This chapter covers the testing & integration workflow: local environment setup,
 ### 8.1 Local Environment Setup
 
 - Start the [DSPay](#term-dspay) service: `mvn spring-boot:run -Dspring-boot.run.profiles=local`.
-- Test-chain info: local defaults to each chain's mainnet RPC (same as production).
+- Test-chain info: use the networks and tokens currently returned by `GET /dspay/public/supported-chains`.
 - Test tokens: keep at least 0.02 [USDT](#term-usdt) to cover a 0.01 USDT test order plus its matching suffix, and fund the chain's gas token separately.
 
 ### 8.2 Webhook Testing (ngrok / cpolar)
@@ -1169,7 +1171,7 @@ Test in the order below — skipping ahead makes failures hard to attribute:
    - Copy the canonical string + [apiSecret](#term-apisecret).
    - Compute [HMAC-SHA256](#term-hmac-sha256) hex in the online tool.
    - Compare against your code's output.
-2. **End-to-end order creation**: use the demos in [§4.8 / §4.9](#java-end-to-end-demo) to create an order; confirm the response contains `orderNo` + `payAmount` (with suffix).
+2. **End-to-end order creation and Pay Now**: use the demos in [§4.6 / §4.7](#java-end-to-end-demo) to create an order; confirm the create response contains `orderNo` + `checkoutUrl` + `originPayAmount` and does not yet contain `payAmount`. Open Checkout, select a network/token and click Pay Now; then confirm Checkout displays the final `payAmount` including the suffix.
 3. **Trigger webhook verification**: pay with real tokens; trigger the `COMPLETED` webhook; confirm verification passes.
 4. **Test idempotency**: manually replay a webhook; confirm the merchant backend does not double-ship.
 
@@ -1241,8 +1243,8 @@ A: The chain is supported, but the merchant has no `ENABLED` receiving address f
 **Q: The cashier shows [`50707`](#error-50707) `CHAIN_NOT_SUPPORTED`?**
 A: The selected chain is not currently supported. Ask the payer to return to the cashier and choose an available chain; contact DSPay support if the error persists.
 
-**Q: Cashier order creation shows [`50610`](#error-50610)/[`50611`](#error-50611)/[`50612`](#error-50612)?**
-A: Suffix-mechanism concurrency or precision issue. [`50610`](#error-50610) `ORDER_CREATE_BUSY` (suffix-lock contention, retry); [`50611`](#error-50611) `SUFFIX_EXHAUSTED` (suffix slots exhausted, wait for concurrency to drain); [`50612`](#error-50612) `SUFFIX_PRECISION_SATURATED` (merchant `payAmount` has more than 2 decimal places).
+**Q: Pay Now shows [`50610`](#error-50610)/[`50611`](#error-50611)/[`50612`](#error-50612)?**
+A: [`50610`](#error-50610) `ORDER_CREATE_BUSY` means the service is temporarily busy under concurrent requests. Retry later with the same order and payment selection; it does not mean suffixes are exhausted. [`50611`](#error-50611) `SUFFIX_EXHAUSTED` means no suffix is currently available for the same payment combination, receiving address and original amount; immediate retries normally cannot help, so wait for pending orders to complete or close before retrying. [`50612`](#error-50612) `SUFFIX_PRECISION_SATURATED` means the original amount exceeds 2 decimal places, leaving insufficient room for the 4-digit suffix within the fixed six-decimal scale.
 
 ### 9.4 Webhooks
 
@@ -1356,9 +1358,9 @@ Source: `DspayExceptionConstant.java`, grouped by error-code range.
 | <a id="error-50606"></a>50606 | TX_HASH_INVALID | Transaction hash is invalid. |
 | <a id="error-50608"></a>50608 | TX_HASH_ALREADY_USED | Transaction hash has already been used (supplement only; refund no longer validates refundTxHash). |
 | <a id="error-50609"></a>50609 | NO_ENABLED_ADDRESS | No `ENABLED` receiving address (merchant has not configured one for this [networkId](#term-networkid) / chain). |
-| <a id="error-50610"></a>50610 | ORDER_CREATE_BUSY | Order creation busy (suffix-lock contention; retry). |
-| <a id="error-50611"></a>50611 | SUFFIX_EXHAUSTED | Suffix slots exhausted. |
-| <a id="error-50612"></a>50612 | SUFFIX_PRECISION_SATURATED | Insufficient suffix precision; for stablecoins this normally means merchant `payAmount` has more than 2 decimal places. |
+| <a id="error-50610"></a>50610 | ORDER_CREATE_BUSY | Temporarily busy under concurrent requests; retry the same request later. |
+| <a id="error-50611"></a>50611 | SUFFIX_EXHAUSTED | No suffix is currently available for the same payment combination, receiving address and original amount; wait for pending orders to complete or close before retrying. |
+| <a id="error-50612"></a>50612 | SUFFIX_PRECISION_SATURATED | The original amount exceeds 2 decimal places, leaving insufficient room for the 4-digit suffix within the fixed six-decimal scale. |
 | <a id="error-50613"></a>50613 | ORDER_SIGNATURE_INVALID | Signature verification failed for order creation or active query. |
 | <a id="error-50614"></a>50614 | ORDER_TIMESTAMP_EXPIRED | Order-creation or active-query timestamp outside the ±5-minute window. |
 
