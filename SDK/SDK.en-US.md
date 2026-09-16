@@ -393,7 +393,7 @@ Amounts use a fixed six-decimal scale: merchant amounts use at most 2 decimal pl
 ### 4.2 Standard Integration Flow
 
 1. Optionally call `GET /dspay/public/supported-chains`.
-2. Generate a unique `outOrderNo` and sign the complete create request on the merchant server.
+2. Generate a unique `outOrderNo` using only letters, digits, and hyphens (maximum 64 characters), and sign the complete create request on the merchant server.
 3. Call `POST /dspay/public/order/create`.
 4. DSPay creates a `CREATED` order and returns `orderNo`, `checkoutUrl`, `createAt` and `expireAt`.
 5. Redirect the customer to `checkoutUrl`.
@@ -412,7 +412,7 @@ Content-Type: application/json
 | Field | Type | Required | Signed | Description |
 |---|---|---:|---:|---|
 | `merchantNo` | string | Yes | Yes | DSPay merchant ID; non-empty, maximum string length 32 characters |
-| `outOrderNo` | string | Yes | Yes | Merchant order ID; non-empty, maximum string length 64 characters; unique per merchant and used as the idempotency key |
+| `outOrderNo` | string | Yes | Yes | Merchant order ID; non-empty; letters, digits, and hyphens only (`A-Z`, `a-z`, `0-9`, `-`); maximum 64 characters; unique per merchant and used as the idempotency key |
 | `productPrice` | decimal | No | When non-null | Fiat display price; at most 14 integer digits and 6 fractional digits |
 | `productPriceCurrency` | string | No | When non-null | Fiat currency; maximum string length 16 characters |
 | `productId` | string | No | When non-null | Merchant product ID; maximum string length 64 characters |
@@ -933,7 +933,7 @@ POST /dspay/public/order/query
 |---|---:|---:|---|
 | `merchantNo` | Yes | Yes | Non-empty merchant ID; maximum 32 characters |
 | `orderNo` | Conditional | When non-null | At least one of `orderNo/outOrderNo` must be non-empty; maximum 64 characters |
-| `outOrderNo` | Conditional | When non-null | At least one of `orderNo/outOrderNo` must be non-empty; maximum 64 characters |
+| `outOrderNo` | Conditional | When non-null | At least one of `orderNo/outOrderNo` must be non-empty; letters, digits, and hyphens only (`A-Z`, `a-z`, `0-9`, `-`); maximum 64 characters |
 | `timestamp` | Yes | Yes | Unix milliseconds; absolute server-time difference must not exceed 300000 ms |
 | `signature` | Yes | No | Lowercase HMAC-SHA256 hexadecimal string, exactly 64 characters |
 
