@@ -418,7 +418,7 @@ DSPay 使用识别尾数区分相同网络、代币、收款地址和原始金�
 ### 4.2 标准接入流程
 
 1. 商户后端可调用 `GET /dspay/public/supported-chains` 获取平台支持的网络和代币。
-2. 商户后端生成唯一 `outOrderNo`，过滤值为 `null` 的字段后按参数名 ASCII 升序签名。
+2. 商户后端生成唯一 `outOrderNo`（仅允许大小写字母、数字和横杠，最长 64 个字符），过滤值为 `null` 的字段后按参数名 ASCII 升序签名。
 3. 商户后端调用 `POST /dspay/public/order/create`。
 4. DSPay 立即创建状态为 `CREATED` 的订单，返回 `orderNo`、`checkoutUrl` 和支付截止时间。
 5. 商户将用户跳转到 `checkoutUrl`。
@@ -439,7 +439,7 @@ Content-Type: application/json
 | 字段 | 类型 | 必填 | 签名 | 说明 |
 |---|---|---:|---:|---|
 | `merchantNo` | string | 是 | 是 | DSPay 商户编号；不能为空，字符串长度最多 32 个字符 |
-| `outOrderNo` | string | 是 | 是 | 商户订单号；不能为空，字符串长度最多 64 个字符；同一商户下唯一，也是幂等键 |
+| `outOrderNo` | string | 是 | 是 | 商户订单号；不能为空，仅允许大小写字母、数字和横杠（`A-Z`、`a-z`、`0-9`、`-`），最长 64 个字符；同一商户下唯一，也是幂等键 |
 | `productPrice` | decimal | 否 | 值非null时 | 商品法币价格；整数部分最多 14 位，小数部分最多 6 位 |
 | `productPriceCurrency` | string | 否 | 值非null时 | 商品价格币种；字符串长度最多 16 个字符 |
 | `productId` | string | 否 | 值非null时 | 商户产品 ID；字符串长度最多 64 个字符 |
@@ -994,7 +994,7 @@ Content-Type: application/json
 |---|---:|---:|---|
 | `merchantNo` | 是 | 是 | 商户编号；不能为空；最多 32 个字符 |
 | `orderNo` | 条件 | 值非null时 | 与 `outOrderNo` 至少一个非空；最多 64 个字符 |
-| `outOrderNo` | 条件 | 值非null时 | 与 `orderNo` 至少一个非空；最多 64 个字符 |
+| `outOrderNo` | 条件 | 值非null时 | 与 `orderNo` 至少一个非空；仅允许大小写字母、数字和横杠（`A-Z`、`a-z`、`0-9`、`-`），最长 64 个字符 |
 | `timestamp` | 是 | 是 | Unix 毫秒时间戳；与服务端时间差绝对值不得超过 300000 毫秒 |
 | `signature` | 是 | 否 | HMAC-SHA256 小写十六进制字符串，固定 64 个字符 |
 
