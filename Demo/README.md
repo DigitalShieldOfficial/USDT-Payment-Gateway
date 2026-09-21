@@ -9,7 +9,7 @@ This demo implements the merchant integration flow: the browser calls the mercha
 | Demo | Minimum | Tested versions | Dependencies |
 |------|---------|-----------------|--------------|
 | Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; `.nvmrc` included |
-| Java | JDK 11 | Microsoft OpenJDK `11.0.27`; Temurin `21.0.11` | No Maven/Gradle dependencies |
+| Java | JDK 8 | Verified on Corretto `1.8.0_504` and Temurin `21.0.11` | No Maven/Gradle dependencies |
 | PHP | PHP 5.6 | PHP CLI `5.6.40` and `8.5.10` | No Composer dependency |
 | Frontend | A modern browser with `crypto.randomUUID()` | Chrome `151.0.7922.175` | One HTML file; no build step |
 
@@ -44,33 +44,35 @@ export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
 export PUBLIC_BASE_URL="http://localhost:3000"
-node src/server.js
+npm start        # equivalent to: node src/server.js
 ```
 
-Open `Demo/front-end/index.html` and click Pay Now. Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal.
+Every backend version also serves the store page itself: after `./start.sh`, open `http://localhost:3000` (or your `PUBLIC_BASE_URL`) and click Pay Now — page and API share the same origin, no extra static hosting needed. Opening `Demo/front-end/index.html` directly from disk also works locally (it falls back to `http://localhost:3000`). Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal. `FRONT_END_DIR` optionally points the backend at a different front-end directory (default: `../../front-end`).
 
-The frontend reuses one `outOrderNo` within the browser session so repeated create attempts exercise the idempotent create-order contract.
+The front end displays an editable Order ID (`outOrderNo`). The refresh button generates a new ID each time; Pay Now submits the displayed ID. Use a new ID for each new order. Reuse the original ID and identical business fields only when retrying the same order. The backend uses the supplied value, or generates one when none is supplied.
 
 ## Run Java
 
 ```bash
 cd Demo/back-end/java
+mkdir -p build && javac -d build src/DspayMockMerchant.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
   -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
-  -DpublicBase="http://localhost:3000" src/DspayMockMerchant.java
+  -DpublicBase="http://localhost:3000" -cp build DspayMockMerchant
 ```
 
 ## Run PHP
 
-> Replace only the two `REPLACE_WITH_REAL_*` credential placeholders below. The production API and local redirect base are already populated. Do not copy Markdown link syntax into shell values.
+> Replace the three `REPLACE_WITH_REAL_*` placeholders below (the API host included) with real values from the DSPay Merchant Portal. Do not copy Markdown link syntax into shell values.
 
 ```bash
 cd Demo/back-end/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://wallet.ds.pro"
+export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
 export PUBLIC_BASE_URL="http://localhost:3000"
-./start.sh
+php -S 0.0.0.0:3000 server.php
+# background alternative: ./start.sh (prompts for missing variables, stop with ./stop.sh)
 ```
 
 ## Demo endpoints
@@ -83,4 +85,4 @@ export PUBLIC_BASE_URL="http://localhost:3000"
 | GET | `/payment/return` | Timeout landing; Node/PHP demo queries DSPay |
 | GET | `/payment/success` | Success landing; Node/PHP demo queries DSPay |
 
-In production, store the secret in KMS, add HTTP timeouts and bounded retries, reuse the same `outOrderNo` on retries, process webhooks idempotently, and fulfill only after a verified webhook or server-side query reports `COMPLETED`. A browser redirect is never proof of payment. Both URLs are optional: `returnUrl` is used only when the order times out, while `successRedirectUrl` is used only after completion. Checkout becomes unviewable 180 days after order creation and must not be used as a permanent order-details URL.
+In production, store the secret in KMS and assign a fresh `outOrderNo` to every new order. Only a network retry of the same logical create request should reuse its original `outOrderNo` and identical business fields. Add HTTP timeouts and bounded retries, process webhooks idempotently, and fulfill only after a verified webhook or server-side query reports `COMPLETED`. A browser redirect is never proof of payment. Both URLs are optional: `returnUrl` is used only when the order times out, while `successRedirectUrl` is used only after completion. Checkout becomes unviewable 180 days after order creation and must not be used as a permanent order-details URL.

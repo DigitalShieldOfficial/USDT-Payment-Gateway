@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f7fb" />
-    <title>Nova Store - Digital Goods Checkout Demo</title>
+    <title>Digital Shield Store - Digital Goods Checkout Demo</title>
     <style>
       :root {
         color: #18213b;
@@ -281,8 +281,7 @@
         margin: 22px 0;
       }
 
-      .detail-row,
-      .total {
+      .detail-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -299,29 +298,86 @@
         font-weight: 600;
       }
 
-      .total {
+      .entry-row {
+        display: grid;
+        grid-template-columns: 85px minmax(0, 1fr);
+        align-items: center;
+        gap: 6px 12px;
+      }
+
+      .amount-row {
         padding-top: 20px;
         border-top: 1px solid #edf0f6;
       }
 
-      .total span {
+      .entry-row label {
         color: #58637d;
         font-size: 14px;
       }
 
-      .price {
-        color: #17203a;
-        font-size: 30px;
-        font-weight: 780;
-        letter-spacing: -0.04em;
+      .entry-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
 
-      .price small {
-        margin-left: 4px;
+      .entry-control input {
+        width: 100%;
+        min-width: 0;
+        height: 42px;
+        padding: 10px 12px;
+        border: 1px solid #dce3f0;
+        border-radius: 10px;
+        outline: none;
+        color: #303952;
+        background: #fff;
+        font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      .entry-control input:focus {
+        border-color: #3468f5;
+        box-shadow: 0 0 0 3px rgba(52, 104, 245, 0.12);
+      }
+
+      .amount-control input {
+        text-align: right;
+        font-family: inherit;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .currency {
         color: #69748e;
         font-size: 14px;
         font-weight: 600;
-        letter-spacing: 0;
+      }
+
+      .order-id-row {
+        margin-top: 18px;
+      }
+
+      .refresh-order-id {
+        flex: 0 0 42px;
+        height: 42px;
+        border: 1px solid #dce3f0;
+        border-radius: 10px;
+        color: #3468f5;
+        background: #f6f8ff;
+        font-size: 22px;
+        cursor: pointer;
+      }
+
+      .refresh-order-id:hover {
+        background: #eaf0ff;
+      }
+
+      .entry-hint {
+        grid-column: 2;
+        margin: 0;
+        color: #929bb0;
+        font-size: 11px;
+        line-height: 1.5;
       }
 
       .pay-button {
@@ -425,7 +481,7 @@
       <header class="header">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true"></span>
-          <span>Nova Store</span>
+          <span>Digital Shield Store</span>
         </div>
         <div class="secure">
           <span class="secure-dot" aria-hidden="true"></span>
@@ -446,7 +502,7 @@
           <div class="product-art" aria-hidden="true">
             <div class="pass">
               <div class="pass-top">
-                <span>Nova Universe</span>
+                <span>Digital Shield</span>
                 <span class="pass-orbit"></span>
               </div>
               <p class="pass-name">Lifetime Access</p>
@@ -477,13 +533,30 @@
             </div>
             <div class="detail-row">
               <span>Product ID</span>
-              <strong>NOVA-LIFETIME-001</strong>
+              <strong>DIGITAL-SHIELD-LIFETIME-001</strong>
             </div>
           </div>
 
-          <div class="total">
-            <span>Amount Due</span>
-            <strong class="price">0.01 <small>USD</small></strong>
+          <div class="entry-row amount-row">
+            <label for="amount-input">Amount Due</label>
+            <div class="entry-control amount-control">
+              <input id="amount-input" type="text" inputmode="decimal" autocomplete="off"
+                     aria-label="Amount due in USD" aria-describedby="amount-hint"
+                     value="0.01" maxlength="15" required />
+              <span class="currency">USD</span>
+            </div>
+            <p class="entry-hint" id="amount-hint">DSPay payAmount: at least 0.01, up to 12 integer and 2 decimal digits. The same value is sent as productPrice (up to 14 integer and 6 decimal digits).</p>
+          </div>
+
+          <div class="entry-row order-id-row">
+            <label for="order-id-input">Order ID</label>
+            <div class="entry-control">
+              <input id="order-id-input" type="text" autocomplete="off" spellcheck="false"
+                     aria-label="Order ID" aria-describedby="order-id-hint" maxlength="64" required />
+              <button class="refresh-order-id" id="refresh-order-id" type="button"
+                      aria-label="Generate a new Order ID" title="Generate a new Order ID">↻</button>
+            </div>
+            <p class="entry-hint" id="order-id-hint">DSPay outOrderNo: 1–64 letters, digits or hyphens; unique per merchant. Reuse only for the same-order retry.</p>
           </div>
 
           <button class="pay-button" id="pay-button" type="button">Pay Now</button>
@@ -496,13 +569,53 @@
       // Keep payAmount as a positive plain decimal string. The public create API
       // accepts up to 12 integer and 2 fractional digits; scientific notation
       // should not be used by merchant integrations.
-      const CREATE_ORDER_URL = "http://localhost:3000/create?payAmount=0.01&productPrice=0.01&productPriceCurrency=USD&productId=NOVA-LIFETIME-001";
+      const CREATE_ORDER_PATH = "/create?productPriceCurrency=USD&productId=DIGITAL-SHIELD-LIFETIME-001";
+      const AMOUNT_PATTERN = /^(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,2})?$/;
 
       const payButton = document.querySelector("#pay-button");
+      const amountInput = document.querySelector("#amount-input");
+      const orderIdInput = document.querySelector("#order-id-input");
+      const refreshOrderIdButton = document.querySelector("#refresh-order-id");
+
+      function generateOrderId() {
+        const randomBytes = new Uint8Array(16);
+        window.crypto.getRandomValues(randomBytes);
+        const randomSuffix = Array.from(randomBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+        return `DS-${randomSuffix}`;
+      }
+
+      orderIdInput.value = generateOrderId();
+      refreshOrderIdButton.addEventListener("click", () => {
+        orderIdInput.value = generateOrderId();
+        orderIdInput.setCustomValidity("");
+      });
+
+      amountInput.addEventListener("input", () => amountInput.setCustomValidity(""));
+      orderIdInput.addEventListener("input", () => orderIdInput.setCustomValidity(""));
 
       payButton.addEventListener("click", () => {
-        const createOrderUrl = new URL(CREATE_ORDER_URL);
-        let outOrderNo = `NOVA-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+        const amount = amountInput.value.trim();
+        const validAmount = AMOUNT_PATTERN.test(amount) && !/^0(?:\.0{1,2})?$/.test(amount);
+        if (!validAmount) {
+          amountInput.setCustomValidity("Enter at least 0.01 USD, with up to 12 integer and 2 decimal digits.");
+          amountInput.reportValidity();
+          amountInput.focus();
+          return;
+        }
+
+        const outOrderNo = orderIdInput.value;
+        if (!/^[A-Za-z0-9-]{1,64}$/.test(outOrderNo)) {
+          orderIdInput.setCustomValidity("Enter an Order ID of up to 64 letters, numbers or hyphens.");
+          orderIdInput.reportValidity();
+          orderIdInput.focus();
+          return;
+        }
+
+        // 页面由后端托管时（http://host:3000 打开）自动同源；file:// 双击打开回退本机 3000。
+        const baseUrl = window.location.protocol === "file:" ? "http://localhost:3000" : window.location.origin;
+        const createOrderUrl = new URL(CREATE_ORDER_PATH, baseUrl);
+        createOrderUrl.searchParams.set("payAmount", amount);
+        createOrderUrl.searchParams.set("productPrice", amount);
         createOrderUrl.searchParams.set("outOrderNo", outOrderNo);
 
         payButton.disabled = true;
