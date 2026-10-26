@@ -79,14 +79,14 @@
 
 ### Step 2：服务端预创建订单
 
-填入你的 `merchantNo`、`apiSecret` 和 DSPay API 地址，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。
+填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。DSPay API 地址已预填为正式环境地址。
 
-> 执行前必须将下面的 `DSPAY_BASE_URL`、`MERCHANT_NO` 和 `API_SECRET` 替换为真实参数值。`merchantNo` 和 `apiSecret` 从 DSPay 商户后台获取；示例占位值不能直接用于请求。
+> 执行前必须将下面的 `MERCHANT_NO` 和 `API_SECRET` 替换为 DSPay 商户后台中的真实参数值。`DSPAY_BASE_URL` 已预填为 DSPay 正式 API 地址，仅测试其他环境时修改。
 
 ```javascript
 import crypto from 'node:crypto';
 
-const DSPAY_BASE_URL = 'https://wallet.ds.pro'; // 替换为真实 DSPay API 地址
+const DSPAY_BASE_URL = 'https://pay-api.ds.pro'; // DSPay 正式 API 地址
 const MERCHANT_NO = '请替换为真实merchantNo';   // 必须替换：商户后台中的 merchantNo
 const API_SECRET = '请替换为真实apiSecret';     // 必须替换：商户后台中的 apiSecret
 const outOrderNo = `ORDER-${Date.now()}`;
@@ -1211,7 +1211,7 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 8.1 本地环境准备
 
-- 启动 [DSPay](#term-dspay) 服务：`mvn spring-boot:run -Dspring-boot.run.profiles=local`
+- 启动本地[商户 Demo](../Demo/README.zh-CN.md)，将其 DSPay API 地址配置为 `https://pay-api.ds.pro`。DSPay 为托管服务，商户无需启动 DSPay 服务。
 - 测试链信息：以 `GET /dspay/public/supported-chains` 返回的当前可用网络和代币为准
 - 测试代币：钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 测试订单及识别尾数；另备足够的链上 Gas 代币
 

@@ -13,7 +13,7 @@ node --version  # v18.20.8
 npm --version   # 10.8.2
 ```
 
-> `REPLACE_WITH_REAL_MERCHANT_NO`, `REPLACE_WITH_REAL_API_SECRET`, and `REPLACE_WITH_REAL_DSPAY_API_HOST` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running.
+> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL is prefilled with `https://pay-api.ds.pro`; change it only when testing another environment.
 
 Run `./start.sh` for a background service. It prompts for missing `DSPAY_BASE_URL`, `PUBLIC_BASE_URL`, `MERCHANT_NO`, and `API_SECRET`; secret input is hidden. `PORT` is optional and defaults to `3000`; `FRONT_END_DIR` optionally overrides the served front-end directory (default `../../front-end`). Entered values are not saved, so provide them again on the next start or set environment variables first.
 
@@ -27,7 +27,7 @@ For non-interactive use, set the environment variables first:
 ```bash
 cd Demo/back-end/nodejs
 MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO" API_SECRET="REPLACE_WITH_REAL_API_SECRET" \
-DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST" PUBLIC_BASE_URL="http://localhost:3000" npm start
+DSPAY_BASE_URL="https://pay-api.ds.pro" PUBLIC_BASE_URL="http://localhost:3000" npm start
 # npm start is equivalent to node src/server.js; background alternative: ./start.sh (stop with ./stop.sh)
 ```
 

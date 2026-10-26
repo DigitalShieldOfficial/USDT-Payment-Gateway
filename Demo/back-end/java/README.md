@@ -6,13 +6,13 @@ JDK 8+, zero external dependencies. It calls `POST /dspay/public/order/create`, 
 
 Runtime baseline: JDK 8 minimum; verified end-to-end on Amazon Corretto `1.8.0_504` (JDK 8) and Eclipse Temurin `21.0.11`. Maven and Gradle are not required; the source uses only the JDK standard library. `./start.sh` compiles to `build/` and runs `java -cp build DspayMockMerchant` (works on JDK 8, where single-file source launch is unavailable).
 
-> `REPLACE_WITH_REAL_MERCHANT_NO`, `REPLACE_WITH_REAL_API_SECRET`, and `REPLACE_WITH_REAL_DSPAY_API_HOST` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running.
+> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL is prefilled with `https://pay-api.ds.pro`; change it only when testing another environment.
 
 ```bash
 cd Demo/back-end/java
 mkdir -p build && javac -d build src/DspayMockMerchant.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
-  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" -DpublicBase="http://localhost:3000" \
+  -DdspayBase="https://pay-api.ds.pro" -DpublicBase="http://localhost:3000" \
   -cp build DspayMockMerchant
 ```
 

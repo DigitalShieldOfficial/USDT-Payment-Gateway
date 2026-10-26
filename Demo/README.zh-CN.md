@@ -58,13 +58,13 @@ npm test
 
 ## Node.js 启动
 
-> 以下命令中的 `REPLACE_WITH_REAL_MERCHANT_NO`、`REPLACE_WITH_REAL_API_SECRET` 和 `REPLACE_WITH_REAL_DSPAY_API_HOST` 都是占位值，执行前必须替换为真实参数。`merchantNo` 和 `apiSecret` 从DSPay商户后台获取。
+> 以下命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址已预填为正式环境地址 `https://pay-api.ds.pro`，仅测试其他环境时修改。
 
 ```bash
 cd Demo/back-end/nodejs
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 npm start        # 等价于 node src/server.js
 ```
@@ -81,20 +81,20 @@ mkdir -p build && javac -d build src/DspayMockMerchant.java
 java \
   -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" \
   -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
-  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
+  -DdspayBase="https://pay-api.ds.pro" \
   -DpublicBase="http://localhost:3000" \
   -cp build DspayMockMerchant
 ```
 
 ## PHP 启动
 
-> 把下面三个 `REPLACE_WITH_REAL_*` 占位值（含 API 地址）替换为商户后台的真实参数。不要复制 Markdown 链接语法到 Shell 命令中。
+> 把下面的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 替换为 DSPay 商户后台中的真实参数。DSPay API 地址已预填为正式环境地址 `https://pay-api.ds.pro`，仅测试其他环境时修改。不要复制 Markdown 链接语法到 Shell 命令中。
 
 ```bash
 cd Demo/back-end/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 php -S 0.0.0.0:3000 server.php
 # 后台运行可选：./start.sh（缺变量时交互提示，./stop.sh 停止）

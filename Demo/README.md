@@ -36,13 +36,13 @@ npm test
 
 ## Run Node.js
 
-> `REPLACE_WITH_REAL_MERCHANT_NO`, `REPLACE_WITH_REAL_API_SECRET`, and `REPLACE_WITH_REAL_DSPAY_API_HOST` below are placeholders. Replace all of them before running. Obtain `merchantNo` and `apiSecret` from the DSPay Merchant Portal.
+> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL is prefilled with `https://pay-api.ds.pro`; change it only when testing another environment.
 
 ```bash
 cd Demo/back-end/nodejs
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 npm start        # equivalent to: node src/server.js
 ```
@@ -57,19 +57,19 @@ The front end displays an editable Order ID (`outOrderNo`). The refresh button g
 cd Demo/back-end/java
 mkdir -p build && javac -d build src/DspayMockMerchant.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
-  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
+  -DdspayBase="https://pay-api.ds.pro" \
   -DpublicBase="http://localhost:3000" -cp build DspayMockMerchant
 ```
 
 ## Run PHP
 
-> Replace the three `REPLACE_WITH_REAL_*` placeholders below (the API host included) with real values from the DSPay Merchant Portal. Do not copy Markdown link syntax into shell values.
+> Replace `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below with real values from the DSPay Merchant Portal. The DSPay API base URL is prefilled with `https://pay-api.ds.pro`; change it only when testing another environment. Do not copy Markdown link syntax into shell values.
 
 ```bash
 cd Demo/back-end/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 php -S 0.0.0.0:3000 server.php
 # background alternative: ./start.sh (prompts for missing variables, stop with ./stop.sh)

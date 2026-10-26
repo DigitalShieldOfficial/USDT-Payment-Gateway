@@ -75,12 +75,12 @@
 
 The following example uses the unified Node.js `18.20.8` baseline and only required fields. Absent or `null` optional fields are omitted from the canonical string.
 
-> Before running it, replace `baseUrl`, `merchantNo`, and `apiSecret` below with real values. Obtain `merchantNo` and `apiSecret` from the DSPay Merchant Portal; the placeholders cannot be used in an actual request.
+> Before running it, replace `merchantNo` and `apiSecret` below with real values from the DSPay Merchant Portal. `baseUrl` is prefilled with the DSPay production API; change it only when testing another environment.
 
 ```javascript
 import crypto from 'node:crypto';
 
-const baseUrl = 'https://wallet.ds.pro'; // Replace with the actual DSPay API base URL.
+const baseUrl = 'https://pay-api.ds.pro'; // DSPay production API base URL.
 const merchantNo = 'replace-with-real-merchantNo'; // Required: Merchant Portal merchantNo.
 const apiSecret = 'replace-with-real-apiSecret';   // Required: Merchant Portal apiSecret.
 const outOrderNo = `ORDER-${Date.now()}`;
@@ -1147,7 +1147,7 @@ This chapter covers the testing & integration workflow: local environment setup,
 
 ### 8.1 Local Environment Setup
 
-- Start the [DSPay](#term-dspay) service: `mvn spring-boot:run -Dspring-boot.run.profiles=local`.
+- Start a local [merchant Demo](../Demo/README.md) and configure its DSPay API base URL as `https://pay-api.ds.pro`. DSPay is hosted; merchants do not need to start the DSPay service.
 - Test-chain info: use the networks and tokens currently returned by `GET /dspay/public/supported-chains`.
 - Test tokens: keep at least 0.02 [USDT](#term-usdt) to cover a 0.01 USDT test order plus its matching suffix, and fund the chain's gas token separately.
 

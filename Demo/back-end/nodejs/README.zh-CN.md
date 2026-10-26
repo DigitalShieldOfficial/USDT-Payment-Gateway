@@ -13,7 +13,7 @@ node --version  # v18.20.8
 npm --version   # 10.8.2
 ```
 
-> 启动命令中的 `REPLACE_WITH_REAL_MERCHANT_NO`、`REPLACE_WITH_REAL_API_SECRET` 和 `REPLACE_WITH_REAL_DSPAY_API_HOST` 是占位值，必须替换为真实参数。`merchantNo` 和 `apiSecret` 从DSPay商户后台获取。
+> 命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址已预填为正式环境地址 `https://pay-api.ds.pro`，仅测试其他环境时修改。
 
 后台运行可直接执行 `./start.sh`。脚本会询问缺少的 `DSPAY_BASE_URL`、`PUBLIC_BASE_URL`、`MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../front-end`）。输入值不会保存；下次启动需重新输入或提前设置环境变量。
 
@@ -29,7 +29,7 @@ cd Demo/back-end/nodejs
 ```bash
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 npm start        # 等价于 node src/server.js
 ```

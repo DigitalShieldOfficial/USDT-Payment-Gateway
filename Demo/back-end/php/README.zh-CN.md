@@ -21,7 +21,7 @@ cd Demo/back-end/php
 cd Demo/back-end/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-export DSPAY_BASE_URL="https://REPLACE_WITH_REAL_DSPAY_API_HOST"
+export DSPAY_BASE_URL="https://pay-api.ds.pro"
 export PUBLIC_BASE_URL="http://localhost:3000"
 php -S 0.0.0.0:3000 server.php
 # 后台运行可选：./start.sh（缺变量时交互提示，./stop.sh 停止）

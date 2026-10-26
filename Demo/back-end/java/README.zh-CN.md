@@ -6,12 +6,12 @@ JDK 8+，零外部依赖。该服务真实调用 `POST /dspay/public/order/creat
 
 版本基线：最低 JDK 8；已在 Amazon Corretto `1.8.0_504`（真实 JDK 8）和 Eclipse Temurin `21.0.11` 上端到端验证。无需 Maven/Gradle，源码只使用 JDK 标准库。`./start.sh` 会先编译到 `build/` 再以 `java -cp build DspayMockMerchant` 运行（兼容不支持单文件源码启动的 JDK 8）。
 
-> 以下命令中的 `REPLACE_WITH_REAL_MERCHANT_NO`、`REPLACE_WITH_REAL_API_SECRET` 和 `REPLACE_WITH_REAL_DSPAY_API_HOST` 是占位值，执行前必须替换为真实参数。`merchantNo` 和 `apiSecret` 从DSPay商户后台获取。
+> 命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址已预填为正式环境地址 `https://pay-api.ds.pro`，仅测试其他环境时修改。
 
 ```bash
 mkdir -p build && javac -d build src/DspayMockMerchant.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
-  -DdspayBase="https://REPLACE_WITH_REAL_DSPAY_API_HOST" \
+  -DdspayBase="https://pay-api.ds.pro" \
   -DpublicBase="http://localhost:3000" -cp build DspayMockMerchant
 ```
 
