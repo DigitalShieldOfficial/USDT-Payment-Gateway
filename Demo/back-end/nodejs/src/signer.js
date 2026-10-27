@@ -1,9 +1,10 @@
 'use strict';
 
 const crypto = require('crypto');
+const { JsonNumber, parseJson } = require('./lossless-json');
 
-const text = (v) => (v == null ? '' : String(v).trim());
-const decimal = (v) => (v == null || v === '' ? '' : String(v));
+const blank = (value) => /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/u.test(value);
+const text = (v) => (v == null ? '' : String(v));
 
 function canonicalJson(value) {
     if (value == null) return '';
@@ -12,6 +13,7 @@ function canonicalJson(value) {
 }
 
 function canonicalJsonValue(value) {
+    if (value instanceof JsonNumber) return value.canonical();
     if (value == null) return 'null';
     if (Array.isArray(value)) return `[${value.map(canonicalJsonValue).join(',')}]`;
     if (typeof value === 'object') {
@@ -42,13 +44,16 @@ function numberToPlainString(value) {
 }
 
 function canonicalMethods(methods) {
-    if (!Array.isArray(methods) || methods.length === 0) return '';
+    if (!Array.isArray(methods)) throw new TypeError('allowedPaymentMethods must be an array');
+    if (methods.length === 0) return '';
     const seen = new Set();
     const values = [];
     for (const method of methods) {
+        if (!method || typeof method !== "object" || Array.isArray(method)) throw new TypeError("Payment method must be an object");
+        if (typeof method.networkId !== "string" || !method.networkId || blank(method.networkId) || typeof method.contractAddress !== "string" || !method.contractAddress || blank(method.contractAddress)) throw new TypeError("Payment method fields must be non-blank strings");
         const networkId = text(method.networkId);
         const rawAddress = text(method.contractAddress);
-        const address = rawAddress.startsWith('0x') ? rawAddress.toLowerCase() : rawAddress;
+        const address = rawAddress.slice(0, 2).toLowerCase() === '0x' ? rawAddress.toLowerCase() : rawAddress;
         const value = `${networkId}|${address}`;
         if (!seen.has(value)) { seen.add(value); values.push(value); }
     }
@@ -69,6 +74,7 @@ function canonicalFields(fields) {
 }
 
 function canonicalFieldValue(value) {
+    if (value instanceof JsonNumber) return value.plain;
     if (typeof value === 'string') return text(value);
     if (typeof value === 'number') return numberToPlainString(value);
     if (typeof value === 'boolean') return String(value);
@@ -76,19 +82,13 @@ function canonicalFieldValue(value) {
 }
 
 function signCreateOrder(order, apiSecret) {
-    const canonical = canonicalFields({
-        merchantNo: order.merchantNo == null ? null : text(order.merchantNo),
-        outOrderNo: order.outOrderNo == null ? null : text(order.outOrderNo),
-        productPrice: order.productPrice == null ? null : decimal(order.productPrice),
-        productPriceCurrency: order.productPriceCurrency == null ? null : text(order.productPriceCurrency),
-        productId: order.productId == null ? null : text(order.productId),
-        attach: order.attach == null ? null : canonicalJson(order.attach),
-        payAmount: order.payAmount == null ? null : decimal(order.payAmount),
-        allowedPaymentMethods: order.allowedPaymentMethods == null ? null : canonicalMethods(order.allowedPaymentMethods),
-        returnUrl: order.returnUrl == null ? null : text(order.returnUrl),
-        successRedirectUrl: order.successRedirectUrl == null ? null : text(order.successRedirectUrl),
-        timestamp: order.timestamp == null ? null : order.timestamp,
-    });
+    const fields = { ...order };
+    for (const key of ['productId', 'productPriceCurrency']) {
+        if (typeof fields[key] === 'string' && blank(fields[key])) delete fields[key];
+    }
+    for (const key of ['returnUrl', 'successRedirectUrl']) if (fields[key] === '') delete fields[key];
+    if (fields.allowedPaymentMethods != null) fields.allowedPaymentMethods = canonicalMethods(fields.allowedPaymentMethods);
+    const canonical = canonicalFields(fields);
     return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
@@ -103,12 +103,17 @@ function signQuery(query, apiSecret) {
     return { canonical, signature: hmac(canonical, apiSecret) };
 }
 
-function verifyCallback(rawBody, signature, apiSecret) {
-    if (!rawBody || !signature || !apiSecret) return false;
+function verifyCallback(rawBody, signature, apiSecret, now = Date.now()) {
+    if (!rawBody || typeof signature !== "string" || !/^[a-fA-F0-9]{64}$/.test(signature) || !apiSecret) return false;
     let body;
-    try { body = JSON.parse(rawBody); } catch (_) { return false; }
+    try { body = parseJson(rawBody); } catch (_) { return false; }
     if (!body || Array.isArray(body) || typeof body !== 'object') return false;
-    const expected = Buffer.from(hmac(canonicalFields(body), apiSecret), 'utf8');
+    if (!(body.timestamp instanceof JsonNumber) || !body.timestamp.integer) return false;
+    const stamp = BigInt(body.timestamp.plain), clock = BigInt(now);
+    if (stamp < 0n || stamp < clock - 300000n || stamp > clock + 300000n) return false;
+    let canonical;
+    try { canonical = canonicalFields(body); } catch (_) { return false; }
+    const expected = Buffer.from(hmac(canonical, apiSecret), 'utf8');
     const actual = Buffer.from(String(signature).toLowerCase(), 'utf8');
     return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }

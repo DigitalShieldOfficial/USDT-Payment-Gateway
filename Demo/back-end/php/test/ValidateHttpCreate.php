@@ -1,6 +1,7 @@
 <?php
 
-// Integration test: start server.php with valid DSPay sandbox credentials first.
+// Optional live integration test: start server.php with valid merchant credentials.
+// The default DSPay API is mainnet; order creation calls the real API.
 $createUrl = getenv('TEST_CREATE_URL');
 if (!$createUrl) {
     echo "ValidateHttpCreate: SKIP (set TEST_CREATE_URL for a live integration test)\n";

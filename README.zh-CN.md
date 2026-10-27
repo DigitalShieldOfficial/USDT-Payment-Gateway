@@ -99,11 +99,12 @@ DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础�
 | [java 集成指南](./Demo/back-end/java)     | 
 | [NodeJs 集成指南](./Demo/back-end/nodejs) | 
 | [PHP 集成指南](./Demo/back-end/php)       |
+| [Python 集成指南](./Demo/back-end/python) |
 | [前端 集成指南](./Demo/front-end/)          | 
 
 [查看更多演示](./Demo)
 
-Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 11+、PHP 5.6+；前端需要支持 `crypto.randomUUID()` 的现代浏览器。Node.js只需一个版本。实际验证版本和依赖说明见 [Demo 已验证运行环境](./Demo/README.zh-CN.md#已验证运行环境)。
+Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 8+、PHP 5.6+、Python 3.10+；前端需要支持 `crypto.randomUUID()` 的现代浏览器。Node.js只需一个版本。实际验证版本和依赖说明见 [Demo 已验证运行环境](./Demo/README.zh-CN.md#已验证运行环境)。
 
 
 ## 联系我们
@@ -112,6 +113,7 @@ Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 11+、PHP 5.6+；前�
 
 | 渠道 | 联系方式 |
 | --- | --- |
+| 官方技术支持群 | https://t.me/+746hER7mf-82MWFl |
 | Telegram 频道 | https://t.me/digitshield |
 | Telegram 社区 | https://t.me/DigitaShield |
 | X 官方账号 | https://x.com/DigitShield_HQ |

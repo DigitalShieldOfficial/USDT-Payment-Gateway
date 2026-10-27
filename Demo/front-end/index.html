@@ -611,7 +611,7 @@
           return;
         }
 
-        // 页面由后端托管时（http://host:3000 打开）自动同源；file:// 双击打开回退本机 3000。
+        // Use the current origin when served by a backend; fall back to localhost:3000 when opened via file://.
         const baseUrl = window.location.protocol === "file:" ? "http://localhost:3000" : window.location.origin;
         const createOrderUrl = new URL(CREATE_ORDER_PATH, baseUrl);
         createOrderUrl.searchParams.set("payAmount", amount);
