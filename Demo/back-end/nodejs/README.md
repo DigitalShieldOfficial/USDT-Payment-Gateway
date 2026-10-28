@@ -53,7 +53,7 @@ From the backend directory, run `tail -f logs/server.log` for live logs after `.
 
 Check both HTTP status and DSPay business codes. Verification or redirects do not prove merchant accounting or fulfillment. API secrets and JSON signature fields are redacted; other business parameters remain visible for integration debugging.
 
-The Node.js client sends `User-Agent: DSPay-Nodejs-Demo/1.0` and `Accept: application/json`. For Cloudflare HTTP 403, logs retain the response body, `cfRay`, and `contentType`; the page error also includes `CF-Ray`. Give the Ray ID to the API operator to identify the blocking rule. Changing the User-Agent does not guarantee acceptance by every rule.
+The Node.js client calls HTTPS APIs through built-in TLS/HTTP/2 support, using a fixed modern cipher order, a standard Chrome browser User-Agent, and `Accept: application/json`. The implementation in `src/transport.js` requires no npm installation, third-party packages, or native binaries. It neither configures a proxy nor reads system proxy settings. HTTPS upstreams must support HTTP/2; local HTTP mock APIs still use HTTP/1.1. Certificate verification stays enabled, with TLS 1.2 as the minimum version. For Cloudflare HTTP 403, logs retain the response body, `cfRay`, and `contentType`; the page error also includes `CF-Ray`. Give the Ray ID to the API operator to identify the blocking rule. Changing the User-Agent does not guarantee acceptance by every rule.
 
 ## Shared Behavior Across All Four Demos
 
@@ -63,4 +63,6 @@ Callbacks preserve large JSON integers and decimal precision and reject duplicat
 
 Upstream requests explicitly use 10-second timeouts and refuse redirects. Success requires a top-level integer `code` equal to `0` and a `data` field; HTTP 200 or `header.resultCode` alone is insufficient. HTTP failures, nonzero business codes, malformed responses, and timeouts return HTTP 502 with diagnostic logs. HTTP libraries, default proxy behavior, and TLS characteristics remain runtime-specific.
 
-For network failures, `DSPAY_ERROR.details` retains the underlying Node.js cause chain and error codes such as `ECONNRESET`, `ENOTFOUND`, and `UND_ERR_CONNECT_TIMEOUT`. Error responses also show the underlying cause; the 10-second timeout is reported explicitly. A `fetch failed` error without an HTTP response is distinct from a Cloudflare HTTP 403 and must be diagnosed using its actual error code.
+For network failures, `DSPAY_ERROR.details` retains the underlying Node.js cause chain and error codes such as `ECONNRESET`, `ENOTFOUND`, and `ETIMEDOUT`. Error responses also show the underlying cause; the 10-second timeout is reported explicitly. A connection error without an HTTP response is distinct from a Cloudflare HTTP 403 and must be diagnosed using its actual error code.
+
+Run regression tests with `node --test` (or `npm test`). TLS tests generate temporary local certificates using OpenSSL; OpenSSL is a test tool only and is not required to run the Demo. Independent transport checks on older Node releases do not change the full Demo runtime baseline of `>=18.20.8`.

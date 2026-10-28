@@ -56,7 +56,7 @@ npm start        # 等价于 node src/server.js
 
 请同时检查 HTTP 状态码和 DSPay 业务码；验签通过或跳转成功不代表商户已经入账或发货。API 密钥和 JSON 签名字段会脱敏，其余业务参数保留用于联调。
 
-Node.js 客户端发送 `User-Agent: DSPay-Nodejs-Demo/1.0` 和 `Accept: application/json`。若收到 Cloudflare HTTP 403，日志保留响应正文、`cfRay` 和 `contentType`，页面错误也包含 `CF-Ray`。请将 Ray ID 提供给 API 管理方定位拦截规则；更换 User-Agent 不能保证所有规则都会放行。
+Node.js 客户端通过内置 `tls`/HTTP/2 能力调用 HTTPS API，采用固定的现代加密套件顺序和普通 Chrome 浏览器 User-Agent，并发送 `Accept: application/json`。实现位于 `src/transport.js`，无需 npm 安装、第三方包或原生二进制；没有配置或自动读取系统代理。HTTPS 上游必须支持 HTTP/2；本地 HTTP 模拟接口仍使用 HTTP/1.1。证书验证保持开启，TLS 最低版本为 1.2。若收到 Cloudflare HTTP 403，日志保留响应正文、`cfRay` 和 `contentType`，页面错误也包含 `CF-Ray`。请将 Ray ID 提供给 API 管理方定位拦截规则；更换 User-Agent 不能保证所有规则都会放行。
 
 ## 四种 Demo 的统一行为
 
@@ -66,4 +66,6 @@ Node.js 客户端发送 `User-Agent: DSPay-Nodejs-Demo/1.0` 和 `Accept: applica
 
 上游请求显式配置 10 秒超时，不跟随重定向。成功必须满足顶层整数 `code` 为 `0` 且包含 `data`；不能只看 HTTP 200 或 `header.resultCode`。HTTP 错误、业务码非零、响应格式异常或超时统一返回 HTTP 502，并保留诊断日志。网络库、代理默认行为和 TLS 特征仍由各运行时决定。
 
-网络失败时，`DSPAY_ERROR` 日志的 `details` 会保留 Node.js 底层 `cause` 链及错误码，例如 `ECONNRESET`、`ENOTFOUND`、`UND_ERR_CONNECT_TIMEOUT`。错误响应同时显示底层原因；10 秒超时会明确提示。没有收到 HTTP 响应的 `fetch failed` 与 Cloudflare HTTP 403 是不同故障，需根据实际错误码排查。
+网络失败时，`DSPAY_ERROR` 日志的 `details` 会保留 Node.js 底层 `cause` 链及错误码，例如 `ECONNRESET`、`ENOTFOUND`、`ETIMEDOUT`。错误响应同时显示底层原因；10 秒超时会明确提示。没有收到 HTTP 响应的连接错误 与 Cloudflare HTTP 403 是不同故障，需根据实际错误码排查。
+
+运行回归测试：`node --test`（或 `npm test`）。TLS 测试使用 OpenSSL 生成临时本地证书；OpenSSL 仅为测试工具，启动 Demo 不需要它。传输模块在较低 Node 版本上的独立验证不改变整个 Demo 的 `>=18.20.8` 运行基线。

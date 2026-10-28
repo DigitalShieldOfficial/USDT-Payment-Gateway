@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { URL } = require('url');
 const { describeError, summarizeError } = require('./request-error');
+const { postJson } = require('./transport');
 const { JsonNumber, parseJson, stringifyJson } = require('./lossless-json');
 const { signCreateOrder, signQuery, verifyCallback } = require('./signer');
 
@@ -76,13 +77,11 @@ function amount(value, field, integers, decimals, minimum = false) {
 }
 async function post(path, body) {
     logEvent('DSPAY_REQUEST', {method: 'POST', url: DSPAY_BASE_URL + path, body});
-    const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 10000);
     try {
-        const response = await fetch(DSPAY_BASE_URL + path, {method: 'POST', redirect: 'manual', signal: controller.signal,
-            headers: {'Content-Type': 'application/json', 'Accept': 'application/json', 'User-Agent': 'DSPay-Nodejs-Demo/1.0'}, body: stringifyJson(body)});
-        const raw = await response.text(), cfRay = response.headers.get('cf-ray');
-        logEvent('DSPAY_RESPONSE', {path, status: response.status, cfRay, contentType: response.headers.get('content-type'), body: raw});
-        if (!response.ok) throw new Error('DSPay HTTP ' + response.status + (cfRay ? '; CF-Ray: ' + cfRay : ''));
+        const response = await postJson(DSPAY_BASE_URL + path, stringifyJson(body));
+        const raw = response.body, cfRay = response.headers['cf-ray'];
+        logEvent('DSPAY_RESPONSE', {path, status: response.status, cfRay, contentType: response.headers['content-type'], body: raw});
+        if (response.status < 200 || response.status >= 300) throw new Error('DSPay HTTP ' + response.status + (cfRay ? '; CF-Ray: ' + cfRay : ''));
         const result = parseJson(raw);
         if (!result || Array.isArray(result) || !(result.code instanceof JsonNumber) || !result.code.integer) throw new Error('DSPay response must contain a top-level integer code');
         if (result.code.plain !== '0') throw new Error('DSPay business error: ' + result.code.plain);
@@ -91,9 +90,9 @@ async function post(path, body) {
     } catch (error) {
         const details = describeError(error);
         logEvent('DSPAY_ERROR', {path, error: error.message, details});
-        const message = controller.signal.aborted ? 'DSPay request timed out after 10 seconds' : summarizeError(details);
+        const message = error.code === 'ETIMEDOUT' ? 'DSPay request timed out after 10 seconds' : summarizeError(details);
         throw Object.assign(new Error(message, {cause: error}), {status: 502, demoCode: 'DSPAY_ERROR'});
-    } finally { clearTimeout(timer); }
+    }
 }
 
 async function createOrder(url, res, base) {

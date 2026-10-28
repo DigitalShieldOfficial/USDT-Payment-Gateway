@@ -204,8 +204,8 @@ class StartupTest(unittest.TestCase):
                         self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
                         self.assertIn("CF-Ray=test-ray-id", log)
                     if language == "nodejs":
-                        self.assertEqual({key.lower(): value for key, value in self.api_headers[-1].items()}.get("user-agent"), "DSPay-Nodejs-Demo/1.0")
-                        self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
+                        self.assertIn("Mozilla/5.0", {key.lower(): value for key, value in self.api_headers[-1].items()}.get("user-agent", ""))
+                        self.assertEqual({key.lower(): value for key, value in self.api_headers[-1].items()}.get("accept"), "application/json")
                         self.assertIn('"cfRay":"test-ray-id"', log)
                         self.assertIn("DSPay HTTP 403; CF-Ray: test-ray-id", log)
                     if language == "php":
@@ -367,10 +367,10 @@ class StartupTest(unittest.TestCase):
                 self.assertEqual(response.code, 502)
                 body = json.load(response)
             self.assertEqual(body['code'], 'DSPAY_ERROR')
-            self.assertIn('fetch failed', body['message'])
+            self.assertIn('ECONNRESET', body['message'])
             self.assertRegex(body['message'], r'UND_ERR_SOCKET|ECONNRESET')
             log = (self.demo / 'back-end/nodejs/logs/server.log').read_text()
-            self.assertIn('"cause":', log)
+            self.assertIn('"code":"ECONNRESET"', log)
             self.assertRegex(log, r'UND_ERR_SOCKET|ECONNRESET')
             self.assertNotIn('demo-secret', log)
         finally:
