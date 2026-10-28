@@ -10,8 +10,8 @@
 
 ```text
 Demo/
-├── front-end/index.html
-└── back-end/
+├── frontend/index.html
+└── backend/
     ├── nodejs/   Node.js 18.20.8，零 npm 依赖
     ├── java/     JDK 8+，零外部依赖
     ├── php/      PHP 5.6+，无需 Composer
@@ -44,7 +44,7 @@ python3 --version
 Node.js相关文档和代码全部使用同一基线，不需要安装或切换多个Node版本：
 
 ```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/nodejs
 nvm install
 nvm use
 npm test
@@ -63,9 +63,9 @@ npm test
 
 ## 本地测试与主网联调边界
 
-- **本地签名测试**：Java 执行其指南中的 `DspayMockMerchantTest`；Node.js 执行 `npm test`；PHP 执行 `php test/ValidateCreateOrder.php`；Python 在 `Demo/back-end/python` 执行 `python3 -B -m unittest discover -s test -v`。这些测试使用任意编造的本地测试密钥（见上方密钥安全说明），无需商户账号或真实转账。
+- **本地签名测试**：Java 执行其指南中的 `DspayMockMerchantTest`；Node.js 执行 `npm test`；PHP 执行 `php test/ValidateCreateOrder.php`；Python 在 `Demo/backend/python` 执行 `python3 -B -m unittest discover -s test -v`。这些测试使用任意编造的本地测试密钥（见上方密钥安全说明），无需商户账号或真实转账。
 - **本地回调模拟**：PHP 的 `php test/VerifyCallback.php` 在进程内构造 JSON 和签名，再验证回调。它不调用真实订单接口，也不测试 HTTP 投递、完整防重放、业务幂等或真实订单状态；不能据此发货。
-- **Python HTTP 模拟**：Python 测试套件启动本地模拟 DSPay HTTP 服务，验证创建/查询、回调成功与失败、跳转及后台启停，不调用生产 API，详见 [Python 指南](back-end/python/README.zh-CN.md)。
+- **Python HTTP 模拟**：Python 测试套件启动本地模拟 DSPay HTTP 服务，验证创建/查询、回调成功与失败、跳转及后台启停，不调用生产 API，详见 [Python 指南](backend/python/README.zh-CN.md)。
 - **主网支付联调**：启动商户 Demo，使用默认正式 API，并配置真实商户参数和公网回调地址，再按收银台最终金额支付。此流程涉及真实代币和网络费用，不能用虚拟回调代替。
 
 本仓库未提供公开测试网、测试币水龙头或免转账生成真实支付结果的接口。`supported-chains` 返回当前 API 支持的网络和代币，不代表测试网环境。
@@ -93,20 +93,20 @@ python3 -B -m unittest discover -s Demo/test -v
 > 以下命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址默认使用正式环境地址 `https://pay-api.ds.pro`，无需填写；仅测试其他环境时覆盖。
 
 ```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/nodejs
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 npm start        # 等价于 node src/server.js
 ```
 
-四种语言后端都会直接托管商店页：执行 `./start.sh` 后，浏览器打开启动时显示的本地页面或对外访问地址点击 Pay Now 即可——页面与接口同源，无需额外静态托管。本地也可以直接双击打开 `Demo/front-end/index.html`（页面会自动回退请求 `http://localhost:3000`）。可选环境变量 `FRONT_END_DIR` 可指定其他前端目录（默认 `../../front-end`）。
+四种语言后端都会直接托管商店页：执行 `./start.sh` 后，浏览器打开启动时显示的本地页面或对外访问地址点击 Pay Now 即可——页面与接口同源，无需额外静态托管。本地也可以直接双击打开 `Demo/frontend/index.html`（页面会自动回退请求 `http://localhost:3000`）。可选环境变量 `FRONT_END_DIR` 可指定其他前端目录（默认 `../../frontend`）。
 
 接收真实回调需要公网可访问地址。可用 ngrok 等工具代理 Demo 的监听端口，将公网 `/notify` 地址单独登记到商户后台。
 
 ## Java 启动
 
 ```bash
-cd Demo/back-end/java
+cd Demo/backend/java
 mkdir -p build && javac -d build src/DspayMockMerchant.java src/DspayTransport.java
 java \
   -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" \
@@ -119,7 +119,7 @@ java \
 > 把下面的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 替换为 DSPay 商户后台中的真实参数。DSPay API 地址默认使用正式环境地址 `https://pay-api.ds.pro`，无需填写；仅测试其他环境时覆盖。不要复制 Markdown 链接语法到 Shell 命令中。
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 php -S 0.0.0.0:3000 server.php
@@ -131,14 +131,14 @@ php -S 0.0.0.0:3000 server.php
 > 将下面的商户号和 API 密钥替换为商户后台中的真实参数。API 默认使用正式环境地址，无需填写。需要 Python 3.10+，无需 pip 安装。
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 python3 -B src/server.py
 # 后台运行可用 ./start.sh（缺变量时交互提示）；执行 ./stop.sh 停止
 ```
 
-打开 `http://localhost:3000` 使用共享商店页。直接请求创建接口时必须提供 `payAmount`，例如 `/create?payAmount=0.01&outOrderNo=ORDER-1`。配置校验、回调及本地测试详见 [Python 指南](back-end/python/README.zh-CN.md)。
+打开 `http://localhost:3000` 使用共享商店页。直接请求创建接口时必须提供 `payAmount`，例如 `/create?payAmount=0.01&outOrderNo=ORDER-1`。配置校验、回调及本地测试详见 [Python 指南](backend/python/README.zh-CN.md)。
 
 ## 本地接口
 

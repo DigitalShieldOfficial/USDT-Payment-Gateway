@@ -32,7 +32,7 @@ Versions below the listed minimum are unsupported. The demos do not use framewor
 All Node.js documentation and code use one baseline; multiple Node.js installations are not required:
 
 ```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/nodejs
 nvm install
 nvm use
 npm test
@@ -40,9 +40,9 @@ npm test
 
 ## Local Tests and Mainnet Integration Boundaries
 
-- **Local signing tests**: run `DspayMockMerchantTest` as documented in the Java guide, `npm test` for Node.js, `php test/ValidateCreateOrder.php` for PHP, or `python3 -B -m unittest discover -s test -v` from `Demo/back-end/python` for Python. These tests use dummy secrets and require no merchant account or real transfer.
+- **Local signing tests**: run `DspayMockMerchantTest` as documented in the Java guide, `npm test` for Node.js, `php test/ValidateCreateOrder.php` for PHP, or `python3 -B -m unittest discover -s test -v` from `Demo/backend/python` for Python. These tests use dummy secrets and require no merchant account or real transfer.
 - **Local callback simulation**: `php test/VerifyCallback.php` constructs JSON and a signature and verifies the callback within the process. It does not call the real order API or test HTTP delivery, full replay protection, business idempotency, or actual order state. Never use this result to authorize fulfillment.
-- **Python HTTP simulation**: the Python test suite runs a local mock DSPay HTTP service and exercises create/query, callback ACK/failure, redirects, and background start/stop without calling the production API. See the [Python guide](back-end/python/README.md).
+- **Python HTTP simulation**: the Python test suite runs a local mock DSPay HTTP service and exercises create/query, callback ACK/failure, redirects, and background start/stop without calling the production API. See the [Python guide](backend/python/README.md).
 - **Mainnet payment integration**: start the merchant Demo using the default production API, and supply real merchant configuration and a publicly reachable callback URL, then pay the final amount displayed by Checkout. This uses real tokens and network fees; synthetic callbacks cannot replace it.
 
 This repository provides no public testnet, faucet, or API that generates a real payment result without a transfer. `supported-chains` lists networks and tokens supported by the configured API; it does not indicate a testnet environment.
@@ -70,20 +70,20 @@ python3 -B -m unittest discover -s Demo/test -v
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
 
 ```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/nodejs
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 npm start        # equivalent to: node src/server.js
 ```
 
-Every backend version also serves the store page itself: after `./start.sh`, open `http://localhost:3000` (or the public URL) and click Pay Now — page and API share the same origin, no extra static hosting needed. Opening `Demo/front-end/index.html` directly from disk also works locally (it falls back to `http://localhost:3000`). Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal. `FRONT_END_DIR` optionally points the backend at a different front-end directory (default: `../../front-end`).
+Every backend version also serves the store page itself: after `./start.sh`, open `http://localhost:3000` (or the public URL) and click Pay Now — page and API share the same origin, no extra static hosting needed. Opening `Demo/frontend/index.html` directly from disk also works locally (it falls back to `http://localhost:3000`). Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal. `FRONT_END_DIR` optionally points the backend at a different frontend directory (default: `../../frontend`).
 
 The front end displays an editable Order ID (`outOrderNo`). The refresh button generates a new ID each time; Pay Now submits the displayed ID. Use a new ID for each new order. Reuse the original ID and identical business fields only when retrying the same order. The backend uses the supplied value, or generates one when none is supplied.
 
 ## Run Java
 
 ```bash
-cd Demo/back-end/java
+cd Demo/backend/java
 mkdir -p build && javac -d build src/DspayMockMerchant.java src/DspayTransport.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
   -cp build DspayMockMerchant
@@ -94,7 +94,7 @@ java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL
 > Replace `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below with real values from the DSPay Merchant Portal. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment. Do not copy Markdown link syntax into shell values.
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 php -S 0.0.0.0:3000 server.php
@@ -106,14 +106,14 @@ php -S 0.0.0.0:3000 server.php
 > Replace the merchant number and API secret below with real portal values. The API URL defaults to the production address. Python 3.10+ is required; no pip install is needed.
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 python3 -B src/server.py
 # Background alternative: ./start.sh (prompts for missing values); stop with ./stop.sh
 ```
 
-Use the shared storefront at `http://localhost:3000`. Direct create requests require `payAmount`, for example `/create?payAmount=0.01&outOrderNo=ORDER-1`. See the [Python guide](back-end/python/README.md) for configuration validation, callbacks, and local tests.
+Use the shared storefront at `http://localhost:3000`. Direct create requests require `payAmount`, for example `/create?payAmount=0.01&outOrderNo=ORDER-1`. See the [Python guide](backend/python/README.md) for configuration validation, callbacks, and local tests.
 
 ## Demo endpoints
 

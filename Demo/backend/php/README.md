@@ -8,7 +8,7 @@ Runtime baseline: PHP 5.6 minimum; all syntax checks, create-signature tests, an
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders and must be replaced. The API address defaults to the DSPay production API; override it only when testing another environment.
 
-Run `./start.sh` and enter any missing `MERCHANT_NO` and `API_SECRET` values; secret input is hidden. `PORT` is optional and defaults to `3000`, and `FRONT_END_DIR` optionally overrides the served front-end directory (default `../../front-end`). Entered values are not saved. The server runs in the background (PID in `server.pid`); stop it with `./stop.sh`.
+Run `./start.sh` and enter any missing `MERCHANT_NO` and `API_SECRET` values; secret input is hidden. `PORT` is optional and defaults to `3000`, and `FRONT_END_DIR` optionally overrides the served frontend directory (default `../../frontend`). Entered values are not saved. The server runs in the background (PID in `server.pid`); stop it with `./stop.sh`.
 
 The API address defaults to `https://pay-api.ds.pro` for both script and direct startup, so it is not prompted. Set `DSPAY_BASE_URL` explicitly only to test another environment. API addresses must be complete HTTP(S) origins without a trailing slash, path, query, credentials, or whitespace; invalid explicit values are rejected rather than repaired.
 
@@ -17,14 +17,14 @@ Startup requires only the merchant number and API secret; no access URL configur
 For ngrok, run `ngrok http 3000` (match the Demo port). For nginx, proxy to `http://127.0.0.1:3000` and set `proxy_set_header Host $http_host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, and `proxy_set_header X-Forwarded-Host $http_host;` to replace client-supplied forwarded hosts. The Demo trusts proxy headers only from loopback peers. Supply one correct host and protocol, not comma-separated lists, and access the public service through that proxy.
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 ./start.sh
 ```
 
 For non-interactive use, set the environment variables first:
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 php -S 0.0.0.0:3000 server.php
@@ -34,7 +34,7 @@ php -S 0.0.0.0:3000 server.php
 - `GET /create`: call `POST /dspay/public/order/create`, then 302 to returned `checkoutUrl`
 - `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
 - `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
-- `GET /` serves the front-end store page (same origin as the API)
+- `GET /` serves the frontend store page (same origin as the API)
 - `returnUrl` redirects back to the store page; `successRedirectUrl` lands on `/query` showing the real order status — a redirect is never proof of payment
 
 Run local tests:

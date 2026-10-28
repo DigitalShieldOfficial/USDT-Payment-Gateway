@@ -14,8 +14,8 @@ const PORT = Number(process.env.PORT || 3000);
 const DSPAY_BASE_URL = apiBase(process.env.DSPAY_BASE_URL ?? 'https://pay-api.ds.pro');
 const MERCHANT_NO = process.env.MERCHANT_NO || 'change-me';
 const API_SECRET = process.env.API_SECRET || 'change-me';
-// Serve Demo/front-end by default; override the directory with the FRONT_END_DIR environment variable.
-const FRONT_END_DIR = process.env.FRONT_END_DIR || path.resolve(__dirname, '../../../front-end');
+// Serve Demo/frontend by default; override the directory with the FRONT_END_DIR environment variable.
+const FRONT_END_DIR = process.env.FRONT_END_DIR || path.resolve(__dirname, '../../../frontend');
 function logEvent(event, fields) {
     fields = { ...fields };
     if (typeof fields.body === "string") { try { fields.body = parseJson(fields.body); } catch (_) {} }
@@ -176,7 +176,7 @@ const server = http.createServer(async (req, res) => {
             const target = `/query?outOrderNo=${encodeURIComponent(identifier(args.outOrderNo, 'outOrderNo'))}`;
             res.writeHead(302, { Location: target }); return res.end();
         }
-        // GET / serves the front-end storefront from the same origin as the API.
+        // GET / serves the frontend storefront from the same origin as the API.
         if (req.method === 'GET') {
             const rel = (url.pathname === '/' || url.pathname === '/index.html') ? 'index.html' : decodeURIComponent(url.pathname).slice(1);
             const file = path.resolve(FRONT_END_DIR, rel);

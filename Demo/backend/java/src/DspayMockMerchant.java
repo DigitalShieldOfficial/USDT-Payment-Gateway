@@ -36,12 +36,12 @@ public class DspayMockMerchant {
             System.getenv("DSPAY_BASE_URL") == null ? "https://pay-api.ds.pro" : System.getenv("DSPAY_BASE_URL")));
     static final String MERCHANT_NO = System.getProperty("merchantNo", "change-me");
     static final String API_SECRET = apiSecret();
-    /** Serve Demo/front-end by default; -DfrontEndDir overrides FRONT_END_DIR. */
+    /** Serve Demo/frontend by default; -DfrontEndDir overrides FRONT_END_DIR. */
     static final Path FRONT_END_DIR = frontEndDir();
 
     static Path frontEndDir() {
         String configured = System.getProperty("frontEndDir",
-                System.getenv("FRONT_END_DIR") == null ? "../../front-end" : System.getenv("FRONT_END_DIR"));
+                System.getenv("FRONT_END_DIR") == null ? "../../frontend" : System.getenv("FRONT_END_DIR"));
         if (configured.isEmpty()) throw new IllegalArgumentException("FRONT_END_DIR / -DfrontEndDir must contain index.html");
         return Paths.get(configured);
     }
@@ -61,14 +61,14 @@ public class DspayMockMerchant {
         System.out.println("Demo page: " + "http://localhost:" + PORT + "/  (served from " + FRONT_END_DIR.toAbsolutePath().normalize() + ")");
     }
 
-    /** GET / serves front-end/index.html from the same origin as the API. */
+    /** GET / serves frontend/index.html from the same origin as the API. */
     static void index(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         Path root = FRONT_END_DIR.toAbsolutePath().normalize();
         Path file = ("/".equals(path) || "/index.html".equals(path))
                 ? root.resolve("index.html")
                 : root.resolve(path.substring(1)).normalize();
-        // Prevent path traversal: the resolved absolute path must remain inside the front-end directory.
+        // Prevent path traversal: the resolved absolute path must remain inside the frontend directory.
         if (!file.startsWith(root) || !Files.isRegularFile(file)) {
             send(exchange, 404, "{\"code\":\"NOT_FOUND\",\"path\":" + escJson(path) + "}");
             return;

@@ -126,14 +126,14 @@ try {
         header('Location: /query?outOrderNo=' . rawurlencode($outOrderNo), true, 302);
         return;
     }
-    // GET / serves the front-end page: same origin as the API, so opening the request URL gives the full demo.
-    // FRONT_END_DIR env var overrides the default repo layout (Demo/front-end, relative to this script's ../..).
+    // GET / serves the frontend page: same origin as the API, so opening the request URL gives the full demo.
+    // FRONT_END_DIR env var overrides the default repo layout (Demo/frontend, relative to this script's ../..).
     if ($method === 'GET') {
-        $frontEndDir = getenv('FRONT_END_DIR') ?: __DIR__ . '/../../front-end';
+        $frontEndDir = getenv('FRONT_END_DIR') ?: __DIR__ . '/../../frontend';
         $rel = ($path === '/' || $path === '/index.html') ? 'index.html' : rawurldecode(substr($path, 1));
         $root = realpath($frontEndDir);
         $file = realpath($frontEndDir . '/' . $rel);
-        // Path-traversal guard: resolved file must stay inside the front-end directory.
+        // Path-traversal guard: resolved file must stay inside the frontend directory.
         if ($root !== false && $file !== false && strpos($file, $root) === 0 && is_file($file)) {
             header('Content-Type: ' . (substr($file, -5) === '.html' ? 'text/html; charset=utf-8' : 'application/octet-stream'));
             readfile($file);

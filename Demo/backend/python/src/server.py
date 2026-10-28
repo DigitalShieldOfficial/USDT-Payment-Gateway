@@ -17,7 +17,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from signer import canonical_json, parse_json, sign_create, sign_query, verify_callback
 
 MAX_RESPONSE = 1024 * 1024
-FRONT_END = Path(__file__).resolve().parents[3] / "front-end"
+FRONT_END = Path(__file__).resolve().parents[3] / "frontend"
 
 
 def log_event(event, secret="", **fields):

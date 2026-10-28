@@ -96,11 +96,11 @@ DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础�
 
 | 调用指南                                  |
 |---------------------------------------|
-| [java 集成指南](./Demo/back-end/java)     | 
-| [NodeJs 集成指南](./Demo/back-end/nodejs) | 
-| [PHP 集成指南](./Demo/back-end/php)       |
-| [Python 集成指南](./Demo/back-end/python) |
-| [前端 集成指南](./Demo/front-end/)          | 
+| [java 集成指南](./Demo/backend/java)     |
+| [NodeJs 集成指南](./Demo/backend/nodejs) |
+| [PHP 集成指南](./Demo/backend/php)       |
+| [Python 集成指南](./Demo/backend/python) |
+| [前端 集成指南](./Demo/frontend/)          |
 
 [查看更多演示](./Demo)
 

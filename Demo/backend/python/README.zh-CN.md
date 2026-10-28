@@ -21,21 +21,21 @@ python3 --version
 > 将 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 替换为 DSPay 商户后台中的真实参数。API 默认使用正式环境地址，无需填写。`apiSecret` 只能保存在商户服务端，禁止放入前端代码、URL、浏览器存储或在线工具。
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 ./start.sh
 ```
 
 脚本和直接运行 Python 均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。脚本先询问缺少的 `MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显，输入值不会保存。非交互运行时先设置环境变量：
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 python3 -B src/server.py
 # 后台运行可用 ./start.sh；执行 ./stop.sh 停止
 ```
 
-`PORT` 默认 `3000`；`PYTHON_BIN` 可指定 `start.sh` 使用的解释器。`FRONT_END_DIR` 可覆盖共享的 `Demo/front-end` 目录；使用 `start.sh` 时，相对路径从 Python Demo 目录解析。DSPay API 基础地址必须是仅含 ASCII 字符的完整 HTTP(S) 源地址（国际化域名需使用 punycode），不允许尾部斜杠、路径、查询参数、片段、用户名密码或空白字符。配置不合法时明确报出字段和要求，不静默修正。`MERCHANT_NO` 必须以 `DSM` 或 `M` 开头，后接 1～19 位数字。
+`PORT` 默认 `3000`；`PYTHON_BIN` 可指定 `start.sh` 使用的解释器。`FRONT_END_DIR` 可覆盖共享的 `Demo/frontend` 目录；使用 `start.sh` 时，相对路径从 Python Demo 目录解析。DSPay API 基础地址必须是仅含 ASCII 字符的完整 HTTP(S) 源地址（国际化域名需使用 punycode），不允许尾部斜杠、路径、查询参数、片段、用户名密码或空白字符。配置不合法时明确报出字段和要求，不静默修正。`MERCHANT_NO` 必须以 `DSM` 或 `M` 开头，后接 1～19 位数字。
 
 后台进程的 PID 保存在 `server.pid`，日志写入 `logs/server.log`。打开 `http://localhost:3000` 即可使用共享商店页。接收真实回调时，将该端口代理到公网，并在商户后台配置公网 `/notify` 接口。
 
@@ -59,7 +59,7 @@ python3 -B src/server.py
 ## 本地测试与生产边界
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 python3 -B -m unittest discover -s test -v
 ```
 

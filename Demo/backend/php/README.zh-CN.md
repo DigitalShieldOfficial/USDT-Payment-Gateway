@@ -8,7 +8,7 @@ PHP 5.6+，无需 Composer。服务端调用 DSPay 创建和查询接口，并�
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换。API 地址默认使用 DSPay 正式环境；仅测试其他环境时覆盖。
 
-执行 `./start.sh` 后先输入缺少的 `MERCHANT_NO` 和 `API_SECRET`，再选择 Demo 访问地址；密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../front-end`）。输入值不会保存。服务在后台运行（PID 记录在 `server.pid`），执行 `./stop.sh` 停止。
+执行 `./start.sh` 后先输入缺少的 `MERCHANT_NO` 和 `API_SECRET`，再选择 Demo 访问地址；密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../frontend`）。输入值不会保存。服务在后台运行（PID 记录在 `server.pid`），执行 `./stop.sh` 停止。
 
 脚本和直接启动均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。API 地址必须是完整的 HTTP(S) 源地址，不允许尾部斜杠、路径、查询参数、用户名密码或空白；显式非法值会报错，不静默修正。
 
@@ -17,14 +17,14 @@ PHP 5.6+，无需 Composer。服务端调用 DSPay 创建和查询接口，并�
 ngrok 示例：`ngrok http 3000`（端口应与 Demo 一致）。nginx 请转发到 `http://127.0.0.1:3000`，设置 `proxy_set_header Host $http_host;` 和 `proxy_set_header X-Forwarded-Proto $scheme;`，并覆盖客户端传入的 `X-Forwarded-Host`：`proxy_set_header X-Forwarded-Host $http_host;`。Demo 仅信任来自本机回环地址的代理头，代理链应提供单个正确的域名和协议，不能传入逗号列表；公网入口应通过该代理访问。
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 ./start.sh
 ```
 
 非交互运行时，先设置环境变量：
 
 ```bash
-cd Demo/back-end/php
+cd Demo/backend/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 php -S 0.0.0.0:3000 server.php

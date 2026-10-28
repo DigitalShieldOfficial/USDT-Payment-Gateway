@@ -578,11 +578,11 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 <a id="java-端到端-demo"></a>
 ### 4.6 Java 端到端 Demo
 
-Java 可运行 Demo 统一维护在 [`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。Demo 会在商户服务端构造示例请求、生成签名、调用公共创建接口、检查顶层 `code`，再将浏览器跳转到响应中的 `checkoutUrl`；同时演示回调验签和公共查询兜底。签名边界值以 [§4.4](#签名规范化字符串) 为准。
+Java 可运行 Demo 统一维护在 [`Demo/backend/java`](../Demo/backend/java/README.zh-CN.md)。Demo 会在商户服务端构造示例请求、生成签名、调用公共创建接口、检查顶层 `code`，再将浏览器跳转到响应中的 `checkoutUrl`；同时演示回调验签和公共查询兜底。签名边界值以 [§4.4](#签名规范化字符串) 为准。
 
-- [Java Demo 使用说明](../Demo/back-end/java/README.zh-CN.md)
-- [可运行源码 `DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
-- [启动脚本](../Demo/back-end/java/start.sh) / [停止脚本](../Demo/back-end/java/stop.sh)
+- [Java Demo 使用说明](../Demo/backend/java/README.zh-CN.md)
+- [可运行源码 `DspayMockMerchant.java`](../Demo/backend/java/src/DspayMockMerchant.java)
+- [启动脚本](../Demo/backend/java/start.sh) / [停止脚本](../Demo/backend/java/stop.sh)
 
 <a id="node.js-端到端-demo"></a>
 <a id="47-nodejs--php-demo"></a>
@@ -590,12 +590,12 @@ Java 可运行 Demo 统一维护在 [`Demo/back-end/java`](../Demo/back-end/java
 
 Node.js、PHP 和 Python Demo 遵循同一预下单流程：服务端签名、调用 `POST /dspay/public/order/create`、跳转 `checkoutUrl`、验证回调、主动查询。
 
-- [Node.js Demo 使用说明](../Demo/back-end/nodejs/README.zh-CN.md)
-- [Node.js 服务端 `server.js`](../Demo/back-end/nodejs/src/server.js)
-- [Node.js 签名与验签 `signer.js`](../Demo/back-end/nodejs/src/signer.js)
-- [PHP Demo 使用说明](../Demo/back-end/php/README.zh-CN.md)
-- [Python Demo 使用说明](../Demo/back-end/python/README.zh-CN.md)
-- [Python 服务端 `server.py`](../Demo/back-end/python/src/server.py)与[签名模块 `signer.py`](../Demo/back-end/python/src/signer.py)
+- [Node.js Demo 使用说明](../Demo/backend/nodejs/README.zh-CN.md)
+- [Node.js 服务端 `server.js`](../Demo/backend/nodejs/src/server.js)
+- [Node.js 签名与验签 `signer.js`](../Demo/backend/nodejs/src/signer.js)
+- [PHP Demo 使用说明](../Demo/backend/php/README.zh-CN.md)
+- [Python Demo 使用说明](../Demo/backend/python/README.zh-CN.md)
+- [Python 服务端 `server.py`](../Demo/backend/python/src/server.py)与[签名模块 `signer.py`](../Demo/backend/python/src/signer.py)
 
 ### 4.8 创建失败排查表
 
@@ -1361,13 +1361,13 @@ A: 密钥已被冻结。如果是自己冻结的，排查完成后在后台恢�
 <a id="附录-a-java-综合接入示例"></a>
 ## 附录 A：Java 综合接入示例
 
-Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。该 Demo 同时覆盖服务端预下单签名、调用公共创建接口、跳转 `checkoutUrl`、回调 JSON 规范串验签、严格 ACK 和主动查询。
+Java 接入只维护一份权威实现：[`Demo/backend/java`](../Demo/backend/java/README.zh-CN.md)。该 Demo 同时覆盖服务端预下单签名、调用公共创建接口、跳转 `checkoutUrl`、回调 JSON 规范串验签、严格 ACK 和主动查询。
 
 | 文件 | 用途 |
 |------|------|
-| [`README.zh-CN.md`](../Demo/back-end/java/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
-| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | 创建/查询签名、公共 API 调用、收银台跳转、回调验签与严格响应 |
-| [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | 后台进程启停 |
+| [`README.zh-CN.md`](../Demo/backend/java/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
+| [`src/DspayMockMerchant.java`](../Demo/backend/java/src/DspayMockMerchant.java) | 创建/查询签名、公共 API 调用、收银台跳转、回调验签与严格响应 |
+| [`start.sh`](../Demo/backend/java/start.sh) / [`stop.sh`](../Demo/backend/java/stop.sh) | 后台进程启停 |
 
 创建流程为：**商户后端签名 → 调用公共创建接口 → 获取 `checkoutUrl` → 跳转用户**。用户在收银台选择链和代币后确认支付方式。
 
@@ -1380,14 +1380,14 @@ Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end
 <a id="附录-b-nodejs-综合接入示例"></a>
 ## 附录 B：Node.js 综合接入示例
 
-Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.zh-CN.md)。该 Demo 仅使用 Node.js 内置模块，同时覆盖服务端预下单、收银台跳转、主动查询和回调验签。
+Node.js 接入只维护一份权威实现：[`Demo/backend/nodejs`](../Demo/backend/nodejs/README.zh-CN.md)。该 Demo 仅使用 Node.js 内置模块，同时覆盖服务端预下单、收银台跳转、主动查询和回调验签。
 
 | 文件 | 用途 |
 |------|------|
-| [`README.zh-CN.md`](../Demo/back-end/nodejs/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP 路由、公共创建/查询 API 调用、302 跳转与回调 JSON 规范串验签 |
-| [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | 创建订单签名与常量时间回调验签 |
-| [`package.json`](../Demo/back-end/nodejs/package.json) | 启动命令与运行时信息 |
+| [`README.zh-CN.md`](../Demo/backend/nodejs/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
+| [`src/server.js`](../Demo/backend/nodejs/src/server.js) | HTTP 路由、公共创建/查询 API 调用、302 跳转与回调 JSON 规范串验签 |
+| [`src/signer.js`](../Demo/backend/nodejs/src/signer.js) | 创建订单签名与常量时间回调验签 |
+| [`package.json`](../Demo/backend/nodejs/package.json) | 启动命令与运行时信息 |
 
 创建流程为：**商户后端签名 → 调用公共创建接口 → 获取 `checkoutUrl` → 跳转用户**。用户在收银台选择链和代币后确认支付方式。
 

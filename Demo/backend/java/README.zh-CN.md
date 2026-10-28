@@ -20,7 +20,7 @@ java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL
   -cp build DspayMockMerchant
 ```
 
-后台运行可执行 `./start.sh`。脚本先询问 `MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显。提前设置对应环境变量可跳过询问。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定包含 `index.html` 的其他前端目录（默认 `../../front-end`，脚本中的相对路径以 Java Demo 目录为基准）；直接运行 Java 时也支持此环境变量，`-DfrontEndDir` 优先。显式空值或缺少 `index.html` 会启动失败。输入值不会保存；下次启动需重新输入或通过环境变量提供。非交互运行只需提供上述两项凭证环境变量。
+后台运行可执行 `./start.sh`。脚本先询问 `MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显。提前设置对应环境变量可跳过询问。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定包含 `index.html` 的其他前端目录（默认 `../../frontend`，脚本中的相对路径以 Java Demo 目录为基准）；直接运行 Java 时也支持此环境变量，`-DfrontEndDir` 优先。显式空值或缺少 `index.html` 会启动失败。输入值不会保存；下次启动需重新输入或通过环境变量提供。非交互运行只需提供上述两项凭证环境变量。
 
 - `GET /create`：签名预下单并 302 到响应中的 `checkoutUrl`
 - `GET /query?orderNo=...` 或 `?outOrderNo=...`：签名主动查询
