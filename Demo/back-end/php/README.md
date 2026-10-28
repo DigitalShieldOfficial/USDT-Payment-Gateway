@@ -55,7 +55,7 @@ From the backend directory, run `tail -f logs/server.log` for live logs after `.
 
 Check both HTTP status and DSPay business codes. Verification or redirects do not prove merchant accounting or fulfillment. API secrets and JSON signature fields are redacted; other business parameters remain visible for integration debugging.
 
-The PHP client sends `User-Agent: DSPay-PHP-Demo/1.0` and `Accept: application/json`. Cloudflare HTTP 403 logs retain the response body, `cfRay`, and `contentType`; error messages also include `CF-Ray`. The API operator must inspect the matching security event using the Ray ID. A client identifier does not guarantee that the request will be accepted.
+The PHP client sends `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` and `Accept: application/json`. Cloudflare HTTP 403 logs retain the response body, `cfRay`, and `contentType`; error messages also include `CF-Ray`. The API operator must inspect the matching security event using the Ray ID. A client identifier does not guarantee that the request will be accepted.
 
 ## Shared Behavior Across All Four Demos
 

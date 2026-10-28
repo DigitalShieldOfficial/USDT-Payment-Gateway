@@ -23,7 +23,7 @@ Demo/
 | Demo | 最低版本 | 已验证版本 | 依赖说明 |
 |------|----------|------------|----------|
 | Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 零 npm 依赖；提供 `.nvmrc` |
-| Java | JDK 8 | 已在 Corretto `1.8.0_504` 与 Temurin `21.0.11` 验证 | 零 Maven/Gradle 依赖 |
+| Java | JDK 8 | 已在 Corretto `1.8.0_504`、Microsoft OpenJDK `11.0.27` 与 Temurin `17.0.21` / `21.0.11` 验证 | 零 Maven/Gradle 依赖 |
 | PHP | PHP 5.6 | PHP CLI `5.6.40`、`8.5.10` | 无需 Composer |
 | Python | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
 | 前端 | 支持 `crypto.randomUUID()` 的现代浏览器 | Chrome `151.0.7922.175` | 单文件 HTML，无构建步骤 |
@@ -107,7 +107,7 @@ npm start        # 等价于 node src/server.js
 
 ```bash
 cd Demo/back-end/java
-mkdir -p build && javac -d build src/DspayMockMerchant.java
+mkdir -p build && javac -d build src/DspayMockMerchant.java src/DspayTransport.java
 java \
   -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" \
   -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \

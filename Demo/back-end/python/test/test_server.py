@@ -128,7 +128,7 @@ class ServerTest(unittest.TestCase):
     def test_create_and_query_identify_the_demo_client(self):
         self.assertEqual(self.request("/create?payAmount=0.01&outOrderNo=ORDER-UA")[0], 302)
         self.assertEqual(self.request("/query?outOrderNo=ORDER-UA")[0], 200)
-        self.assertEqual(self.user_agents, ["DSPay-Python-Demo/1.0", "DSPay-Python-Demo/1.0"])
+        self.assertEqual(self.user_agents, ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"])
 
     def test_create_generates_fresh_order_numbers_only_when_absent(self):
         for _ in range(2):

@@ -200,7 +200,7 @@ class StartupTest(unittest.TestCase):
                                 self.assertEqual(error.code, 401)
                     log = (self.demo / "back-end" / language / "logs/server.log").read_text()
                     if language == "java":
-                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "DSPay-Java-Demo/1.0")
+                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
                         self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
                         self.assertIn("CF-Ray=test-ray-id", log)
                     if language == "nodejs":
@@ -209,7 +209,7 @@ class StartupTest(unittest.TestCase):
                         self.assertIn('"cfRay":"test-ray-id"', log)
                         self.assertIn("DSPay HTTP 403; CF-Ray: test-ray-id", log)
                     if language == "php":
-                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "DSPay-PHP-Demo/1.0")
+                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
                         self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
                         self.assertIn('"cfRay":"test-ray-id"', log)
                         self.assertIn("DSPay HTTP 403; CF-Ray: test-ray-id", log)
@@ -242,7 +242,7 @@ class StartupTest(unittest.TestCase):
                 env, port = self.environment()
                 if language == "java":
                     (demo / "build").mkdir(exist_ok=True)
-                    subprocess.run(["javac", "-d", "build", "src/DspayMockMerchant.java"], cwd=demo, check=True)
+                    subprocess.run(["javac", "-d", "build", "src/DspayMockMerchant.java", "src/DspayTransport.java"], cwd=demo, check=True)
                     command = ["java", "-DmerchantNo=DSM001", "-cp", "build", "DspayMockMerchant"]
                 elif language == "nodejs":
                     command = ["node", "src/server.js"]

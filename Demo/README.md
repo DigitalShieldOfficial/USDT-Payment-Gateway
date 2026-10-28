@@ -11,7 +11,7 @@ This demo implements the merchant integration flow: the browser calls the mercha
 | Demo | Minimum | Tested versions | Dependencies |
 |------|---------|-----------------|--------------|
 | Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; `.nvmrc` included |
-| Java | JDK 8 | Verified on Corretto `1.8.0_504` and Temurin `21.0.11` | No Maven/Gradle dependencies |
+| Java | JDK 8 | Verified on Corretto `1.8.0_504`, Microsoft OpenJDK `11.0.27`, and Temurin `17.0.21` / `21.0.11` | No Maven/Gradle dependencies |
 | PHP | PHP 5.6 | PHP CLI `5.6.40` and `8.5.10` | No Composer dependency |
 | Python | Python 3.10 | Python `3.12.14` and `3.14.3` | Standard library only; no pip dependencies |
 | Frontend | A modern browser with `crypto.randomUUID()` | Chrome `151.0.7922.175` | One HTML file; no build step |
@@ -84,7 +84,7 @@ The front end displays an editable Order ID (`outOrderNo`). The refresh button g
 
 ```bash
 cd Demo/back-end/java
-mkdir -p build && javac -d build src/DspayMockMerchant.java
+mkdir -p build && javac -d build src/DspayMockMerchant.java src/DspayTransport.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
   -cp build DspayMockMerchant
 ```

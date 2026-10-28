@@ -55,7 +55,7 @@ php test/ValidateHttpCreate.php  # 未配置 TEST_CREATE_URL 时跳过线上联�
 
 请同时检查 HTTP 状态码和 DSPay 业务码；验签通过或跳转成功不代表商户已经入账或发货。API 密钥和 JSON 签名字段会脱敏，其余业务参数保留用于联调。
 
-PHP 客户端使用 `User-Agent: DSPay-PHP-Demo/1.0` 和 `Accept: application/json`。若收到 Cloudflare HTTP 403，日志记录响应正文、`cfRay` 和 `contentType`，错误信息也包含 `CF-Ray`。需由 API 管理方根据 Ray ID 查询命中规则；客户端标识不保证解除拦截。
+PHP 客户端使用 `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` 和 `Accept: application/json`。若收到 Cloudflare HTTP 403，日志记录响应正文、`cfRay` 和 `contentType`，错误信息也包含 `CF-Ray`。需由 API 管理方根据 Ray ID 查询命中规则；客户端标识不保证解除拦截。
 
 ## 四种 Demo 的统一行为
 

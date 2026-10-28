@@ -54,7 +54,7 @@ python3 -B src/server.py
 
 金额保留十进制字符串；回调 JSON 的小数使用 `Decimal`。签名不修剪非空白字符串，按 SDK §4.4 处理可选字段空值及支付方式规范化。签名模块不接受二进制浮点数；超过演示程序 4096 位限制的 JSON 数字及重复对象字段会报错。原始请求对象不会被改写。
 
-上游请求使用 `DSPay-Python-Demo/1.0` 客户端标识，超时为 10 秒，不跟随重定向。HTTP 错误会保留网关返回的 `CF-Ray`（如有），便于排查。HTTP 失败、响应格式异常或业务码非零返回 HTTP 502，HTTP 200 本身不代表成功。回调要求 UTF-8 JSON、`Content-Length` 和 `X-DSPay-Signature`，不支持分块请求体；Demo 不额外设置回调请求体大小上限；上游响应上限为 1 MiB。验签和时间窗校验通过时返回 HTTP 200 及 `{"code":"SUCCESS","msg":"ok"}`；签名、时间戳或 JSON 异常时返回失败响应。
+上游请求使用 `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` 客户端标识，超时为 10 秒，不跟随重定向。HTTP 错误会保留网关返回的 `CF-Ray`（如有），便于排查。HTTP 失败、响应格式异常或业务码非零返回 HTTP 502，HTTP 200 本身不代表成功。回调要求 UTF-8 JSON、`Content-Length` 和 `X-DSPay-Signature`，不支持分块请求体；Demo 不额外设置回调请求体大小上限；上游响应上限为 1 MiB。验签和时间窗校验通过时返回 HTTP 200 及 `{"code":"SUCCESS","msg":"ok"}`；签名、时间戳或 JSON 异常时返回失败响应。
 
 ## 本地测试与生产边界
 

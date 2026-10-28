@@ -8,7 +8,6 @@ import java.net.InetSocketAddress;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -27,7 +26,7 @@ import java.util.regex.Pattern;
 
 /**
  * Zero-dependency DSPay mock merchant, compatible with JDK 8+.
- * Create build/, compile with javac -d build src/DspayMockMerchant.java,
+ * Create build/, compile with javac -d build src/DspayMockMerchant.java src/DspayTransport.java,
  * then run java -cp build DspayMockMerchant.
  */
 public class DspayMockMerchant {
@@ -249,42 +248,27 @@ public class DspayMockMerchant {
         } catch (IllegalArgumentException error) { failure(exchange, 400, "PARAM_ERROR", error.getMessage()); }
     }
 
-    /**
-     * Java 8 compatible server-to-server POST (HttpURLConnection, zero-dependency).
-     * Returns {statusCode, responseBody}; 4xx/5xx bodies are surfaced to the caller.
-     */
+    /** Java 8 standard-library HTTP/1.1 POST with explicit request framing. */
     static String[] dspayPost(String path, String jsonBody) throws IOException {
         logEvent("DSPAY_REQUEST", "POST " + DSPAY_BASE + path + " body=" + jsonBody);
-        HttpURLConnection conn = (HttpURLConnection) URI.create(DSPAY_BASE + path).toURL().openConnection();
         try {
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("User-Agent", "DSPay-Java-Demo/1.0");
-            conn.setConnectTimeout(10_000);
-            conn.setReadTimeout(10_000);
-            conn.setInstanceFollowRedirects(false);
-            conn.setDoOutput(true);
-            try (OutputStream out = conn.getOutputStream()) {
-                out.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-            }
-            int status = conn.getResponseCode();
-            InputStream err = conn.getErrorStream();
-            String body = decodeUtf8(readAll(err != null ? err : conn.getInputStream()));
-            logEvent("DSPAY_RESPONSE", "path=" + path + " status=" + status + " CF-Ray=" + conn.getHeaderField("CF-Ray") + " contentType=" + conn.getHeaderField("Content-Type") + " body=" + body);
-            if (status < 200 || status >= 300) throw new IOException("DSPay HTTP " + status + (conn.getHeaderField("CF-Ray") == null ? "" : "; CF-Ray: " + conn.getHeaderField("CF-Ray")));
+            DspayTransport.Response response = DspayTransport.post(URI.create(DSPAY_BASE + path), jsonBody.getBytes(StandardCharsets.UTF_8));
+            int status = response.status;
+            String body = decodeUtf8(response.body);
+            String ray = response.headers.get("cf-ray");
+            String type = response.headers.get("content-type");
+            logEvent("DSPAY_RESPONSE", "path=" + path + " status=" + status + " CF-Ray=" + ray + " contentType=" + type + " body=" + body);
+            if (status < 200 || status >= 300) throw new IOException("DSPay HTTP " + status + (ray == null ? "" : "; CF-Ray: " + ray));
             return new String[]{String.valueOf(status), body};
         } catch (IllegalArgumentException error) {
             throw new IOException("DSPay request failed or returned invalid JSON", error);
         } catch (IOException error) {
             logEvent("DSPAY_ERROR", "path=" + path + " error=" + error.getMessage());
             throw error;
-        } finally {
-            conn.disconnect();
         }
     }
 
-    /** Java 8 compatible full-read (InputStream.readAllBytes is Java 9+). */
+    /** Read an input stream without changing its bytes. */
     static byte[] readAll(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
@@ -483,7 +467,7 @@ public class DspayMockMerchant {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8); e.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         e.sendResponseHeaders(status, bytes.length); e.getResponseBody().write(bytes); e.close();
     }
-    /** Java 8 compatible URL encode/decode (Charset overloads are Java 10+; UTF-8 is always supported). */
+    /** Encode and decode URL fields using UTF-8. */
     static String enc(String value) {
         try { return URLEncoder.encode(value, "UTF-8"); }
         catch (java.io.UnsupportedEncodingException e) { throw new IllegalStateException(e); }

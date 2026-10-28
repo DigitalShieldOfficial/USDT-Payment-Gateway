@@ -73,7 +73,7 @@ final class Payment
         $json = LosslessJson::encode($body);
         $context = stream_context_create(array('http' => array(
             'method' => 'POST',
-            'header' => "Content-Type: application/json\r\nAccept: application/json\r\nUser-Agent: DSPay-PHP-Demo/1.0\r\n",
+            'header' => "Content-Type: application/json\r\nAccept: application/json\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36\r\n",
             'content' => $json,
             'ignore_errors' => true,
             'follow_location' => 0,

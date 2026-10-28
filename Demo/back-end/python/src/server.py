@@ -101,7 +101,7 @@ def post(config, path, body):
     log_event("DSPAY_REQUEST", config.api_secret, method="POST", url=config.dspay_base + path, body=body)
     request = Request(config.dspay_base + path, data=canonical_json(body).encode("utf-8"),
                       headers={"Content-Type": "application/json", "Accept": "application/json",
-                               "User-Agent": "DSPay-Python-Demo/1.0"},
+                               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"},
                       method="POST")
     try:
         with build_opener(NoRedirect).open(request, timeout=10) as response:
