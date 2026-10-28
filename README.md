@@ -99,11 +99,12 @@ The mock merchant demo lets you experience the complete DS-Pay payment integrati
 | [Java Integration Guide](./Demo/back-end/java)      |
 | [Node.js Integration Guide](./Demo/back-end/nodejs) |
 | [PHP Integration Guide](./Demo/back-end/php)        |
+| [Python Integration Guide](./Demo/back-end/python) |
 | [Frontend Integration Guide](./Demo/front-end/) |
 
 [View More Demos](./Demo)
 
-Demo baselines: Node.js `18.20.8` + npm `10.8.2`, JDK 11+, PHP 5.6+, and a modern browser supporting `crypto.randomUUID()`. Only one Node.js version is needed. See [Tested runtimes](./Demo/README.md#tested-runtimes) for exact validated versions and dependency details.
+Demo baselines: Node.js `18.20.8` + npm `10.8.2`, JDK 8+, PHP 5.6+, Python 3.10+, and a modern browser supporting `crypto.randomUUID()`. Only one Node.js version is needed. See [Tested runtimes](./Demo/README.md#tested-runtimes) for exact validated versions and dependency details.
 
 
 ## Contact Us
@@ -112,6 +113,7 @@ For integration support, issue feedback, or partnership inquiries, feel free to 
 
 | Channel | Contact |
 | --- | --- |
+| Official Technical Support Group | https://t.me/+746hER7mf-82MWFl |
 | Telegram Channel | https://t.me/digitshield |
 | Telegram Community | https://t.me/DigitaShield |
 | X Official | https://x.com/DigitShield_HQ |

@@ -77,16 +77,18 @@
 
 在 DSPay 后台获取 `merchantNo` 和 `apiSecret`，并至少配置一个已启用的收款地址。首次启用回调会自动生成 `apiSecret`；若暂不配置 `notifyUrl`，可通过后台密钥管理主动生成密钥。回调可稍后启用，但生产上线前必须完成。
 
+> **密钥安全**：`apiSecret` 只能保存在商户服务端。禁止将其嵌入前端代码、浏览器存储或 URL，也不要粘贴到第三方在线工具。本地签名和验签测试使用任意编造的本地测试密钥（如 `demo-secret`，非 DSPay 发放，DSPay 无 sandbox 测试密钥体系）；真实密钥只用于商户服务端调用正式 API 和验证真实回调。
+
 ### Step 2：服务端预创建订单
 
-填入你的 `merchantNo`、`apiSecret` 和 DSPay API 地址，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。
+填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。DSPay API 地址已预填为正式环境地址。
 
-> 执行前必须将下面的 `DSPAY_BASE_URL`、`MERCHANT_NO` 和 `API_SECRET` 替换为真实参数值。`merchantNo` 和 `apiSecret` 从 DSPay 商户后台获取；示例占位值不能直接用于请求。
+> 执行前必须将下面的 `MERCHANT_NO` 和 `API_SECRET` 替换为 DSPay 商户后台中的真实参数值。`DSPAY_BASE_URL` 已预填为 DSPay 正式 API 地址，仅测试其他环境时修改。
 
 ```javascript
 import crypto from 'node:crypto';
 
-const DSPAY_BASE_URL = 'https://wallet.ds.pro'; // 替换为真实 DSPay API 地址
+const DSPAY_BASE_URL = 'https://pay-api.ds.pro'; // DSPay 正式 API 地址
 const MERCHANT_NO = '请替换为真实merchantNo';   // 必须替换：商户后台中的 merchantNo
 const API_SECRET = '请替换为真实apiSecret';     // 必须替换：商户后台中的 apiSecret
 const outOrderNo = `ORDER-${Date.now()}`;
@@ -188,8 +190,8 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 - **[EVM](#term-evm) 钱包**：用于 [SIWE](#term-siwe) 登录（MetaMask / Rabby / Trust 等均可，只需能 `personal_sign`）
 - **公网可达的回调 URL**：用于接收 [DSPay](#term-dspay) 异步通知（本地开发可用 ngrok / cpolar）
 - **[NTP](#term-ntp) 时钟同步**：签名验证有 ±5 分钟时间窗口，服务器时钟必须准确
-- **JDK 11+、Node.js 18.20.8 或 PHP 5.6+**：运行对应语言 Demo（其他语言可按规范自行实现）
-- **测试用稳定币**：每条测试链的钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 原始金额及订单识别尾数；链上 Gas 代币需另行准备
+- **JDK 8+、Node.js 18.20.8、PHP 5.6+ 或 Python 3.10+**：运行对应语言 Demo（其他语言可按规范自行实现）
+- **测试用稳定币**：每条用于联调的主网钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 原始金额及订单识别尾数；链上 Gas 代币需另行准备
 
 #### Demo 运行时版本
 
@@ -198,11 +200,12 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 | Demo | 最低版本 | 已验证版本 | 外部依赖 |
 |------|----------|------------|----------|
 | 文档内 Node.js 示例、Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 无 npm 依赖，仅使用 Node.js 内置模块 |
-| Java Demo、Java 验签示例 | JDK 11 | Microsoft OpenJDK `11.0.27`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
+| Java Demo、Java 验签示例 | JDK 8 | Amazon Corretto `1.8.0_504`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
 | PHP Demo | PHP 5.6 | PHP `5.6.40`、`8.5.10` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
+| Python Demo | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
 | 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
 
-> Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 可直接使用 JDK 11 的单文件源码启动模式；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。
+> Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。
 
 ### 1.5 核心接入速查表
 
@@ -539,7 +542,7 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 - `attach` 对象键递归按字典序排列，去除多余空白；数字去除无意义尾零，`-0` 转为 `0`。
 - `allowedPaymentMethods` 保留商户顺序并去重，每项拼为 `networkId|contractAddress`，再用逗号连接；`0x` 地址转小写。
 
-> 现有 Java、Node.js、PHP Demo 侧会修剪部分字符串，仅覆盖常规演示输入；正式接入请以上述服务端规则为准，不要在签名或回调验签前擅自修剪字段值。
+> Java、Node.js、PHP、Python Demo 均按上述规则保留非空白字符串原值，并按约定排除可选字段空值；签名和回调验签前不会擅自修剪字段值。
 
 `attach` 不可包含密码、私钥、证件或银行卡等敏感信息。
 
@@ -582,14 +585,17 @@ Java 可运行 Demo 统一维护在 [`Demo/back-end/java`](../Demo/back-end/java
 - [启动脚本](../Demo/back-end/java/start.sh) / [停止脚本](../Demo/back-end/java/stop.sh)
 
 <a id="node.js-端到端-demo"></a>
-### 4.7 Node.js / PHP Demo
+<a id="47-nodejs--php-demo"></a>
+### 4.7 Node.js / PHP / Python Demo
 
-Node.js 和 PHP Demo 遵循同一预下单流程：服务端签名、调用 `POST /dspay/public/order/create`、跳转 `checkoutUrl`、验证回调、主动查询。
+Node.js、PHP 和 Python Demo 遵循同一预下单流程：服务端签名、调用 `POST /dspay/public/order/create`、跳转 `checkoutUrl`、验证回调、主动查询。
 
 - [Node.js Demo 使用说明](../Demo/back-end/nodejs/README.zh-CN.md)
 - [Node.js 服务端 `server.js`](../Demo/back-end/nodejs/src/server.js)
 - [Node.js 签名与验签 `signer.js`](../Demo/back-end/nodejs/src/signer.js)
 - [PHP Demo 使用说明](../Demo/back-end/php/README.zh-CN.md)
+- [Python Demo 使用说明](../Demo/back-end/python/README.zh-CN.md)
+- [Python 服务端 `server.py`](../Demo/back-end/python/src/server.py)与[签名模块 `signer.py`](../Demo/back-end/python/src/signer.py)
 
 ### 4.8 创建失败排查表
 
@@ -757,7 +763,7 @@ Body中允许返回`null`的字段仍可能存在，但这些字段不进入签�
 3. **计算 [HMAC-SHA256](#term-hmac-sha256)**：`apiSecret.getBytes(UTF_8)` 作为key（**不Base64解码**），对规范串UTF-8字节计算
 4. **对比并防重放**：与`X-DSPay-Signature`常量时间比较，并校验`timestamp`在当前时间±5分钟内
 
-规范串生成代码直接复用[§4.4 签名和幂等](#签名规范化字符串)以及本仓库Java、Node.js、PHP Demo；下面示例只展示HMAC和常量时间比较部分。
+规范串生成代码直接复用[§4.4 签名和幂等](#签名规范化字符串)以及本仓库 Java、Node.js、PHP、Python Demo；下面示例只展示HMAC和常量时间比较部分。
 
 #### Java 验签示例
 
@@ -1211,9 +1217,13 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 8.1 本地环境准备
 
-- 启动 [DSPay](#term-dspay) 服务：`mvn spring-boot:run -Dspring-boot.run.profiles=local`
-- 测试链信息：以 `GET /dspay/public/supported-chains` 返回的当前可用网络和代币为准
-- 测试代币：钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 测试订单及识别尾数；另备足够的链上 Gas 代币
+本指南的支付联调使用 `https://pay-api.ds.pro` 和当前支持的主网，涉及真实代币与网络费用，不是测试网或沙箱。本仓库未提供公开测试网、测试币水龙头或免转账生成真实支付结果的接口。请勿将 `supported-chains` 理解为测试网列表。
+
+本地签名测试和构造回调只验证本地算法及处理逻辑，不会触发链上付款，也不能证明 DSPay 检测到账、真实回调投递或实际订单完成。详见 [Demo 测试边界](../Demo/README.zh-CN.md#本地测试与主网联调边界)。
+
+- 启动本地[商户 Demo](../Demo/README.zh-CN.md)，默认使用 DSPay 正式 API 地址 `https://pay-api.ds.pro`，无需额外填写。仅测试其他环境时显式覆盖 API 地址。DSPay 为托管服务，商户无需启动 DSPay 服务。
+- 主网联调网络：以 `GET /dspay/public/supported-chains` 返回的当前可用网络和代币为准
+- 主网联调资金：钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 测试订单及识别尾数；另备足够的链上 Gas 代币
 
 ### 8.2 回调测试（ngrok / cpolar）
 
@@ -1233,15 +1243,13 @@ ngrok http 8080
 
 按以下顺序测试，避免跳步导致问题难定位：
 
-1. **单独验签名算法**：用在线 [HMAC-SHA256](#term-hmac-sha256) 工具对比你的签名输出
-   - 复制规范化字符串 + [apiSecret](#term-apisecret)
-   - 在线工具计算 [HMAC-SHA256](#term-hmac-sha256) hex
-   - 对比你的代码输出
+1. **本地验证签名算法**：运行 [Java、Node.js、PHP 或 Python Demo 的本地测试](../Demo/README.zh-CN.md#本地测试与主网联调边界)，使用任意编造的本地测试密钥和构造的规范串核对签名及回调验签结果。不要将真实 `apiSecret` 或真实业务数据输入第三方在线 HMAC 工具。
 2. **端到端创建订单**：用 [§4.6 / §4.7](#java-端到端-demo) 的 Demo 创建订单，确认返回 `orderNo` + `checkoutUrl`，并能打开收银台
 3. **触发回调验签**：用真实代币付款，触发 `COMPLETED` 回调，验签通过
 4. **测试幂等性**：手动重发同一回调请求，确认商户后端不会重复发货
 
-### 8.4 测试代币
+<a id="84-测试代币"></a>
+### 8.4 主网小额联调资金
 
 各链主网小额稳定币测试：
 - Ethereum：至少 0.02 [USDT](#term-usdt)（`0xdac17f958d2ee523a2206206994597c13d831ec7`），另备 ETH 支付 Gas
@@ -1261,7 +1269,7 @@ ngrok http 8080
 
 ### 8.6 ⚠️ 坑点（3 条）
 
-1. **测试顺序**：不要一上来就端到端测试。先单独验签名算法（用在线 HMAC 工具对比），确认签名计算正确后再端到端。跳步会导致"验签失败"无法定位是签名算法错还是传输层错。
+1. **测试顺序**：不要一上来就端到端测试。先使用任意编造的本地测试密钥运行本地签名和验签测试，确认签名计算正确后再端到端。跳步会导致"验签失败"无法定位是签名算法错还是传输层错。
 
 2. **ngrok URL 变化**：免费版 URL 每次重启变化，需在 [DSPay 后台](https://mcashier.ds.pro/login/)重新配置。测试中途重启 ngrok 后，必须同步更新 [DSPay](#term-dspay) 的 `notifyUrl`，否则回调发到旧 URL 全部失败。
 
@@ -1353,7 +1361,7 @@ A: 密钥已被冻结。如果是自己冻结的，排查完成后在后台恢�
 <a id="附录-a-java-综合接入示例"></a>
 ## 附录 A：Java 综合接入示例
 
-Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。该 Demo 同时覆盖服务端预下单签名、调用公共创建接口、跳转 `checkoutUrl`、回调 Raw Body 验签、严格 ACK 和主动查询。
+Java 接入只维护一份权威实现：[`Demo/back-end/java`](../Demo/back-end/java/README.zh-CN.md)。该 Demo 同时覆盖服务端预下单签名、调用公共创建接口、跳转 `checkoutUrl`、回调 JSON 规范串验签、严格 ACK 和主动查询。
 
 | 文件 | 用途 |
 |------|------|
@@ -1377,7 +1385,7 @@ Node.js 接入只维护一份权威实现：[`Demo/back-end/nodejs`](../Demo/bac
 | 文件 | 用途 |
 |------|------|
 | [`README.zh-CN.md`](../Demo/back-end/nodejs/README.zh-CN.md) | 环境要求、配置、启动方式、接口与签名规则 |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP 路由、公共创建/查询 API 调用、302 跳转与 Raw Body 回调处理 |
+| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP 路由、公共创建/查询 API 调用、302 跳转与回调 JSON 规范串验签 |
 | [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | 创建订单签名与常量时间回调验签 |
 | [`package.json`](../Demo/back-end/nodejs/package.json) | 启动命令与运行时信息 |
 

@@ -71,16 +71,18 @@
 | At least one enabled receiving address | Merchant Portal receiving-address settings |
 | `notifyUrl` | Optional for the first request; required before production |
 
+> **Secret handling**: keep `apiSecret` on the merchant server only. Never embed it in frontend code, browser storage, or URLs, or paste it into third-party online tools. Use dummy secrets for local signing and verification tests; use real secrets only on the merchant server for production API requests and real callback verification.
+
 ### Step 1 — Build and sign the request on your server
 
 The following example uses the unified Node.js `18.20.8` baseline and only required fields. Absent or `null` optional fields are omitted from the canonical string.
 
-> Before running it, replace `baseUrl`, `merchantNo`, and `apiSecret` below with real values. Obtain `merchantNo` and `apiSecret` from the DSPay Merchant Portal; the placeholders cannot be used in an actual request.
+> Before running it, replace `merchantNo` and `apiSecret` below with real values from the DSPay Merchant Portal. `baseUrl` is prefilled with the DSPay production API; change it only when testing another environment.
 
 ```javascript
 import crypto from 'node:crypto';
 
-const baseUrl = 'https://wallet.ds.pro'; // Replace with the actual DSPay API base URL.
+const baseUrl = 'https://pay-api.ds.pro'; // DSPay production API base URL.
 const merchantNo = 'replace-with-real-merchantNo'; // Required: Merchant Portal merchantNo.
 const apiSecret = 'replace-with-real-apiSecret';   // Required: Merchant Portal apiSecret.
 const outOrderNo = `ORDER-${Date.now()}`;
@@ -117,7 +119,7 @@ Redirect the customer to `data.checkoutUrl`. DSPay Checkout handles network/toke
 
 - Read [Chapter 4](#chapter-4-creating-your-first-order) for every request/response field, signing and idempotency.
 - Implement [Chapter 5](#chapter-5-handling-webhooks) before production.
-- Run the maintained [Java, Node.js or PHP demos](../Demo/README.md).
+- Run the maintained [Java, Node.js, PHP, or Python demos](../Demo/README.md).
 
 ---
 
@@ -168,8 +170,8 @@ Before you start integrating, have the following ready:
 - **An [EVM](#term-evm) wallet**: required for [SIWE](#term-siwe) login (MetaMask / Rabby / Trust all work — anything that supports `personal_sign`).
 - **A publicly reachable webhook URL**: where [DSPay](#term-dspay) will POST notifications (for local dev, use ngrok / cpolar).
 - **[NTP](#term-ntp)-synced system clock**: signature verification enforces a ±5-minute window; the server clock must be accurate.
-- **JDK 11+, Node.js 18.20.8, or PHP 5.6+**: to run the corresponding demos. Other languages can follow the specification.
-- **Test stablecoins**: keep at least 0.02 [USDT](#term-usdt) on each test chain to cover a 0.01 USDT order plus its matching suffix; fund the wallet's gas token separately.
+- **JDK 8+, Node.js 18.20.8, PHP 5.6+, or Python 3.10+**: to run the corresponding demos. Other languages can follow the specification.
+- **Test stablecoins**: keep at least 0.02 [USDT](#term-usdt) on each mainnet used for integration testing to cover a 0.01 USDT order plus its matching suffix; fund the wallet's gas token separately.
 
 #### Demo Runtime Versions
 
@@ -178,11 +180,12 @@ The following versions were used to execute the corresponding tests. When copyin
 | Demo | Minimum | Tested versions | External dependencies |
 |------|---------|-----------------|-----------------------|
 | Inline Node.js samples and Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; built-in Node.js modules only |
-| Java Demo and Java verification samples | JDK 11 | Microsoft OpenJDK `11.0.27` and Eclipse Temurin `21.0.11` | No Maven/Gradle dependencies; JDK standard library only |
+| Java Demo and Java verification samples | JDK 8 | Amazon Corretto `1.8.0_504` and Eclipse Temurin `21.0.11` | No Maven/Gradle dependencies; JDK standard library only |
 | PHP Demo | PHP 5.6 | PHP `5.6.40` and `8.5.10` CLI | No Composer dependencies; PHP standard extensions only |
+| Python Demo | Python 3.10 | Python `3.12.14` and `3.14.3` | Standard library only; no pip dependencies |
 | Frontend Demo | A modern browser supporting `URL`, `sessionStorage`, and `crypto.randomUUID()` | Google Chrome `151.0.7922.175` | One HTML file; no framework or build tool |
 
-> Only one Node.js installation is needed. The unified debugging baseline is Node.js `18.20.8` + npm `10.8.2`; the Node.js Demo includes `.nvmrc`, so run `nvm use` in that directory. Validation environments include macOS `15.1` and Docker Linux. The Java Demo uses JDK 11 single-file source launch; the PHP minimum is PHP 5.6 because callback verification uses `hash_equals()`.
+> Only one Node.js installation is needed. The unified debugging baseline is Node.js `18.20.8` + npm `10.8.2`; the Node.js Demo includes `.nvmrc`, so run `nvm use` in that directory. Validation environments include macOS `15.1` and Docker Linux. The Java Demo compiles with `javac -d build src/DspayMockMerchant.java` and runs with `java -cp build DspayMockMerchant` (create `build/` first); the PHP minimum is PHP 5.6 because callback verification uses `hash_equals()`.
 
 ### 1.5 Core Integration Cheat Sheet
 
@@ -488,7 +491,7 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonical UTF-8 string))
 - Canonicalize `attach` recursively by sorted object keys and compact JSON; normalize numeric zero to `0` and remove insignificant trailing zeros.
 - Preserve `allowedPaymentMethods` order, remove duplicates, join each entry as `networkId|contractAddress`, comma-separated; lowercase `0x` addresses.
 
-> The current Java, Node.js, and PHP demos trim some strings and cover ordinary demo inputs only. For production signing and webhook verification, follow the server rules above; do not silently trim signed field values.
+> The Java, Node.js, PHP, and Python demos preserve non-blank strings as supplied and apply the optional empty-field exclusions above. They do not silently trim field values before signing or webhook verification.
 
 `merchantNo + outOrderNo` is the idempotency key. Generate a new `outOrderNo` for every new order; never reuse one across distinct orders in the same browser session. An identical network retry of the same logical create request may reuse its original `outOrderNo` and returns the original `orderNo/checkoutUrl/expireAt`. Reusing that number with different business fields returns code `40901` with “Merchant order number has already been used”.
 
@@ -519,12 +522,15 @@ The maintained [Java Demo](../Demo/back-end/java/README.md) builds and signs an 
 - [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh)
 
 <a id="nodejs-end-to-end-demo"></a>
-### 4.7 Node.js / PHP Demos
+<a id="47-nodejs--php-demos"></a>
+### 4.7 Node.js / PHP / Python Demos
 
 - [Node.js Demo guide](../Demo/back-end/nodejs/README.md)
 - [Node.js server](../Demo/back-end/nodejs/src/server.js)
 - [Node.js signer](../Demo/back-end/nodejs/src/signer.js)
 - [PHP Demo guide](../Demo/back-end/php/README.md)
+- [Python Demo guide](../Demo/back-end/python/README.md)
+- [Python server](../Demo/back-end/python/src/server.py) and [signer](../Demo/back-end/python/src/signer.py)
 
 ### 4.8 Create-Request Triage
 
@@ -696,7 +702,7 @@ Nullable fields may remain present in the JSON body, but null-valued fields are 
 3. **Compute [HMAC-SHA256](#term-hmac-sha256)** over the canonical UTF-8 string using `apiSecret.getBytes(UTF_8)` directly (**no Base64 decode**).
 4. **Compare and prevent replay**: constant-time compare with `X-DSPay-Signature`, then require `timestamp` to be within ±5 minutes.
 
-Reuse the canonicalization implementation from [§4.4 Signing and Idempotency](#signing-and-idempotency) and the maintained Java, Node.js, or PHP Demo. The snippets below show only HMAC calculation and constant-time comparison.
+Reuse the canonicalization implementation from [§4.4 Signing and Idempotency](#signing-and-idempotency) and the maintained Java, Node.js, PHP, or Python Demo. The snippets below show only HMAC calculation and constant-time comparison.
 
 #### Java Verification Sample
 
@@ -1147,9 +1153,13 @@ This chapter covers the testing & integration workflow: local environment setup,
 
 ### 8.1 Local Environment Setup
 
-- Start the [DSPay](#term-dspay) service: `mvn spring-boot:run -Dspring-boot.run.profiles=local`.
-- Test-chain info: use the networks and tokens currently returned by `GET /dspay/public/supported-chains`.
-- Test tokens: keep at least 0.02 [USDT](#term-usdt) to cover a 0.01 USDT test order plus its matching suffix, and fund the chain's gas token separately.
+Payment integration in this guide uses `https://pay-api.ds.pro` and currently supported mainnets, with real tokens and network fees. It is not a testnet or sandbox. This repository provides no public testnet, faucet, or API that generates a real payment result without a transfer. Do not interpret `supported-chains` as a testnet list.
+
+Local signing tests and synthetic callbacks check local algorithms and handling only. They do not transfer funds or prove DSPay chain detection, real webhook delivery, or completion of an actual order. See the [Demo testing boundaries](../Demo/README.md#local-tests-and-mainnet-integration-boundaries).
+
+- Start a local [merchant Demo](../Demo/README.md). Its DSPay API address defaults to `https://pay-api.ds.pro`; no extra API configuration is required. Override the address explicitly only when testing another environment. DSPay is hosted; merchants do not need to start the DSPay service.
+- Mainnet integration networks: use the networks and tokens currently returned by `GET /dspay/public/supported-chains`.
+- Mainnet integration funds: keep at least 0.02 [USDT](#term-usdt) to cover a 0.01 USDT test order plus its matching suffix, and fund the chain's gas token separately.
 
 ### 8.2 Webhook Testing (ngrok / cpolar)
 
@@ -1169,15 +1179,13 @@ ngrok http 8080
 
 Test in the order below — skipping ahead makes failures hard to attribute:
 
-1. **Verify the signing algorithm in isolation**: compare your signature output against an online [HMAC-SHA256](#term-hmac-sha256) tool.
-   - Copy the canonical string + [apiSecret](#term-apisecret).
-   - Compute [HMAC-SHA256](#term-hmac-sha256) hex in the online tool.
-   - Compare against your code's output.
+1. **Verify signing locally**: run the [Java, Node.js, PHP, or Python Demo local tests](../Demo/README.md#local-tests-and-mainnet-integration-boundaries) with dummy test secrets and synthetic canonical strings to check signing and callback verification. Never enter a real `apiSecret` or real business data into a third-party online HMAC tool.
 2. **End-to-end order creation and Pay Now**: use the demos in [§4.6 / §4.7](#java-end-to-end-demo) to create an order; confirm the create response contains `orderNo` + `checkoutUrl` + `originPayAmount` and does not yet contain `payAmount`. Open Checkout, select a network/token and click Pay Now; then confirm Checkout displays the final `payAmount` including the suffix.
 3. **Trigger webhook verification**: pay with real tokens; trigger the `COMPLETED` webhook; confirm verification passes.
 4. **Test idempotency**: manually replay a webhook; confirm the merchant backend does not double-ship.
 
-### 8.4 Test Tokens
+<a id="84-test-tokens"></a>
+### 8.4 Mainnet Integration Funds
 
 Use small amounts of mainnet stablecoins per chain:
 - Ethereum: at least 0.02 [USDT](#term-usdt) (`0xdac17f958d2ee523a2206206994597c13d831ec7`), plus ETH for gas.
@@ -1197,7 +1205,7 @@ Use small amounts of mainnet stablecoins per chain:
 
 ### 8.6 ⚠️ Pitfalls (3)
 
-1. **Test sequence**: do not jump straight to end-to-end testing. Verify the signing algorithm in isolation first (compare against an online HMAC tool). Skipping this step makes "signature failed" impossible to attribute — is it the algorithm or the transport layer?
+1. **Test sequence**: do not jump straight to end-to-end testing. Verify signing locally first with dummy test secrets. Skipping this step makes "signature failed" impossible to attribute — is it the algorithm or the transport layer?
 
 2. **ngrok URL churn**: the free-tier URL changes on every restart; you must re-configure it in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/). If ngrok restarts mid-test, update [DSPay](#term-dspay)'s `notifyUrl` in lockstep — otherwise webhooks go to the stale URL and fail.
 
