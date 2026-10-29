@@ -351,7 +351,7 @@ Key settings:
 
 ### 3.6 Configure Contact Link (Optional)
 
-You may configure a contact link in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (customer-service URL / Telegram / email). The DSPay checkout front-end queries and renders it for end users — if a payer runs into trouble, this is how they reach you.
+You may configure a contact link in the [DSPay Merchant Portal](https://mcashier.ds.pro/login/) (customer-service URL / Telegram / email). The DSPay checkout frontend queries and renders it for end users — if a payer runs into trouble, this is how they reach you.
 
 > Optional, but strongly recommended for user experience.
 
@@ -516,21 +516,21 @@ Redirects are navigation only, never proof of payment. Query DSPay server-to-ser
 <a id="java-end-to-end-demo"></a>
 ### 4.6 Java End-to-End Demo
 
-The maintained [Java Demo](../Demo/back-end/java/README.md) builds and signs an example request on the merchant server, calls the public create endpoint, checks the top-level `code`, redirects to `checkoutUrl`, demonstrates webhook verification and performs signed public queries. For signing edge cases, follow [§4.4](#signing-and-idempotency).
+The maintained [Java Demo](../Demo/backend/java/README.md) builds and signs an example request on the merchant server, calls the public create endpoint, checks the top-level `code`, redirects to `checkoutUrl`, demonstrates webhook verification and performs signed public queries. For signing edge cases, follow [§4.4](#signing-and-idempotency).
 
-- [`DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java)
-- [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh)
+- [`DspayMockMerchant.java`](../Demo/backend/java/src/DspayMockMerchant.java)
+- [`start.sh`](../Demo/backend/java/start.sh) / [`stop.sh`](../Demo/backend/java/stop.sh)
 
 <a id="nodejs-end-to-end-demo"></a>
 <a id="47-nodejs--php-demos"></a>
 ### 4.7 Node.js / PHP / Python Demos
 
-- [Node.js Demo guide](../Demo/back-end/nodejs/README.md)
-- [Node.js server](../Demo/back-end/nodejs/src/server.js)
-- [Node.js signer](../Demo/back-end/nodejs/src/signer.js)
-- [PHP Demo guide](../Demo/back-end/php/README.md)
-- [Python Demo guide](../Demo/back-end/python/README.md)
-- [Python server](../Demo/back-end/python/src/server.py) and [signer](../Demo/back-end/python/src/signer.py)
+- [Node.js Demo guide](../Demo/backend/nodejs/README.md)
+- [Node.js server](../Demo/backend/nodejs/src/server.js)
+- [Node.js signer](../Demo/backend/nodejs/src/signer.js)
+- [PHP Demo guide](../Demo/backend/php/README.md)
+- [Python Demo guide](../Demo/backend/python/README.md)
+- [Python server](../Demo/backend/python/src/server.py) and [signer](../Demo/backend/python/src/signer.py)
 
 ### 4.8 Create-Request Triage
 
@@ -1297,13 +1297,13 @@ A: The key has been frozen. If you froze it yourself, restore it from the portal
 <a id="appendix-a-java-reference-integration"></a>
 ## Appendix A: Java Reference Integration
 
-Java integration has one canonical implementation in [`Demo/back-end/java`](../Demo/back-end/java/README.md). It covers signed public create/query calls, redirecting to the returned `checkoutUrl`, ASCII-canonical webhook verification, and strict acknowledgement.
+Java integration has one canonical implementation in [`Demo/backend/java`](../Demo/backend/java/README.md). It covers signed public create/query calls, redirecting to the returned `checkoutUrl`, ASCII-canonical webhook verification, and strict acknowledgement.
 
 | File | Purpose |
 |------|---------|
-| [`README.md`](../Demo/back-end/java/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/DspayMockMerchant.java`](../Demo/back-end/java/src/DspayMockMerchant.java) | Create/query signing, public API calls, Checkout redirect, ASCII-canonical webhook verification, and strict ACK |
-| [`start.sh`](../Demo/back-end/java/start.sh) / [`stop.sh`](../Demo/back-end/java/stop.sh) | Background process lifecycle |
+| [`README.md`](../Demo/backend/java/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
+| [`src/DspayMockMerchant.java`](../Demo/backend/java/src/DspayMockMerchant.java) | Create/query signing, public API calls, Checkout redirect, ASCII-canonical webhook verification, and strict ACK |
+| [`start.sh`](../Demo/backend/java/start.sh) / [`stop.sh`](../Demo/backend/java/stop.sh) | Background process lifecycle |
 
 The create flow is: **merchant backend signs → calls the public create API → receives `checkoutUrl` → redirects the customer**. The customer then confirms a network and token in DSPay Checkout.
 
@@ -1316,14 +1316,14 @@ The create flow is: **merchant backend signs → calls the public create API →
 <a id="appendix-b-nodejs-reference-integration"></a>
 ## Appendix B: Node.js Reference Integration
 
-Node.js integration has one canonical implementation in [`Demo/back-end/nodejs`](../Demo/back-end/nodejs/README.md). It uses built-in Node.js modules and covers signed public create/query calls, Checkout redirects, and webhook verification.
+Node.js integration has one canonical implementation in [`Demo/backend/nodejs`](../Demo/backend/nodejs/README.md). It uses built-in Node.js modules and covers signed public create/query calls, Checkout redirects, and webhook verification.
 
 | File | Purpose |
 |------|---------|
-| [`README.md`](../Demo/back-end/nodejs/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
-| [`src/server.js`](../Demo/back-end/nodejs/src/server.js) | HTTP routes, public create/query API calls, 302 redirect, and canonical webhook handling |
-| [`src/signer.js`](../Demo/back-end/nodejs/src/signer.js) | Order signing and constant-time callback signature verification |
-| [`package.json`](../Demo/back-end/nodejs/package.json) | Start command and runtime metadata |
+| [`README.md`](../Demo/backend/nodejs/README.md) | Requirements, configuration, run commands, endpoints, and signature rules |
+| [`src/server.js`](../Demo/backend/nodejs/src/server.js) | HTTP routes, public create/query API calls, 302 redirect, and canonical webhook handling |
+| [`src/signer.js`](../Demo/backend/nodejs/src/signer.js) | Order signing and constant-time callback signature verification |
+| [`package.json`](../Demo/backend/nodejs/package.json) | Start command and runtime metadata |
 
 The create flow is: **merchant backend signs → calls the public create API → receives `checkoutUrl` → redirects the customer**. The customer then confirms a network and token in DSPay Checkout.
 

@@ -89,10 +89,8 @@ JAVA_ARGS=("-Dport=$PORT" "-DdspayBase=$DSPAY_BASE_URL" "-DmerchantNo=$MERCHANT_
 if [ "${FRONT_END_DIR+x}" = x ]; then
     JAVA_ARGS+=("-DfrontEndDir=$FRONT_END_DIR")
 fi
-# Compile first: single-file source launch (java Foo.java) is a Java 11+ feature;
-# javac + java -cp keeps the demo runnable on JDK 8. (javac -d requires the
-# directory to exist beforehand on JDK 8, hence mkdir above.)
-if ! javac -d "$ROOT/build" src/DspayMockMerchant.java >> "$LOG_FILE" 2>&1; then
+# Compile separately to validate sources before starting the background server.
+if ! javac -d "$ROOT/build" src/DspayMockMerchant.java src/DspayTransport.java >> "$LOG_FILE" 2>&1; then
     echo "Compilation failed. Recent logs:" >&2
     tail -n 20 "$LOG_FILE" >&2
     exit 1

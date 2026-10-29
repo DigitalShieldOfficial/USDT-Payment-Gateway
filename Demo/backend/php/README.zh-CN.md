@@ -1,10 +1,14 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
-# Node.js Mock Merchant
+# DSPay PHP 模拟商户
 
-统一使用 Node.js `18.20.8` + npm `10.8.2`，零 npm 依赖。该服务真实调用 `POST /dspay/public/order/create` 和 `/query`，并使用响应中的 `checkoutUrl` 跳转收银台。
+PHP 5.6+，无需 Composer。服务端调用 DSPay 创建和查询接口，并使用创建响应中的 `checkoutUrl` 跳转收银台。
 
-版本基线和已验证版本均为 Node.js `18.20.8` + npm `10.8.2`。仓库提供 `.nvmrc`，`package.json` 声明 `node >=18.20.8`，不需要多个Node版本，也没有第三方npm包。
+版本基线：最低 PHP 5.6；已在 PHP CLI `5.6.40` 和 `8.5.10` 执行全部语法检查、创建签名测试和回调验签测试。无需 Composer，只使用 PHP 标准扩展；`hash_equals()` 要求 PHP 5.6+。
+
+> `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换。API 地址默认使用 DSPay 正式环境；仅测试其他环境时覆盖。
+
+执行 `./start.sh` 后先输入缺少的 `MERCHANT_NO` 和 `API_SECRET`，再选择 Demo 访问地址；密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../frontend`）。输入值不会保存。服务在后台运行（PID 记录在 `server.pid`），执行 `./stop.sh` 停止。
 
 脚本和直接启动均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。API 地址必须是完整的 HTTP(S) 源地址，不允许尾部斜杠、路径、查询参数、用户名密码或空白；显式非法值会报错，不静默修正。
 
@@ -13,40 +17,35 @@
 ngrok 示例：`ngrok http 3000`（端口应与 Demo 一致）。nginx 请转发到 `http://127.0.0.1:3000`，设置 `proxy_set_header Host $http_host;` 和 `proxy_set_header X-Forwarded-Proto $scheme;`，并覆盖客户端传入的 `X-Forwarded-Host`：`proxy_set_header X-Forwarded-Host $http_host;`。Demo 仅信任来自本机回环地址的代理头，代理链应提供单个正确的域名和协议，不能传入逗号列表；公网入口应通过该代理访问。
 
 ```bash
-nvm install
-nvm use
-node --version  # v18.20.8
-npm --version   # 10.8.2
-```
-
-> 命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址默认使用正式环境地址 `https://pay-api.ds.pro`，无需填写；仅测试其他环境时覆盖。
-
-后台运行可直接执行 `./start.sh`。脚本先询问缺少的 `MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../front-end`）。输入值不会保存；下次启动需重新输入或提前设置环境变量。
-
-```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/php
 ./start.sh
 ```
-
-前台交互运行可用 `npm start`（等价于 `node src/server.js`）。
 
 非交互运行时，先设置环境变量：
 
 ```bash
+cd Demo/backend/php
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
-npm start        # 等价于 node src/server.js
+php -S 0.0.0.0:3000 server.php
+# 后台运行可选：./start.sh（缺变量时交互提示，./stop.sh 停止）
 ```
 
-后台运行可选 `./start.sh`（缺变量时交互提示，`./stop.sh` 停止）。
-
-- `GET /create`：签名预下单并 302 到响应中的 `checkoutUrl`
-- `GET /query?orderNo=...` 或 `?outOrderNo=...`：签名查询
-- `POST /notify`：解析回调 JSON，按参数名 ASCII 升序生成规范串后验签
-- `GET /` 托管前端商店页（与接口同源；可用 `FRONT_END_DIR` 指定其他目录）
+- `GET /create`：签名调用 `POST /dspay/public/order/create`，随后 302 到响应中的 `checkoutUrl`
+- `GET /query?orderNo=...` 或 `?outOrderNo=...`：签名主动查询
+- `POST /notify`：解析回调 JSON，按参数名 ASCII 升序生成规范串，并与 `X-DSPay-Signature` 验签
+- `GET /` 托管前端商店页（与接口同源）
 - `returnUrl` 跳回商店首页；`successRedirectUrl` 跳到 `/query` 展示真实订单状态——浏览器跳转不能作为发货依据
 
-完整说明见 [../../README.zh-CN.md](../../README.zh-CN.md)。
+本地测试：
+
+```bash
+php test/ValidateApiBase.php
+php test/ValidateNetworkError.php
+php test/ValidateCreateOrder.php
+php test/VerifyCallback.php
+php test/ValidateHttpCreate.php  # 未配置 TEST_CREATE_URL 时跳过线上联调
+```
 
 ## 请求与响应日志
 
@@ -56,7 +55,7 @@ npm start        # 等价于 node src/server.js
 
 请同时检查 HTTP 状态码和 DSPay 业务码；验签通过或跳转成功不代表商户已经入账或发货。API 密钥和 JSON 签名字段会脱敏，其余业务参数保留用于联调。
 
-Node.js 客户端发送 `User-Agent: DSPay-Nodejs-Demo/1.0` 和 `Accept: application/json`。若收到 Cloudflare HTTP 403，日志保留响应正文、`cfRay` 和 `contentType`，页面错误也包含 `CF-Ray`。请将 Ray ID 提供给 API 管理方定位拦截规则；更换 User-Agent 不能保证所有规则都会放行。
+PHP 客户端使用 `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` 和 `Accept: application/json`。若收到 Cloudflare HTTP 403，日志记录响应正文、`cfRay` 和 `contentType`，错误信息也包含 `CF-Ray`。需由 API 管理方根据 Ray ID 查询命中规则；客户端标识不保证解除拦截。
 
 ## 四种 Demo 的统一行为
 
@@ -65,5 +64,3 @@ Node.js 客户端发送 `User-Agent: DSPay-Nodejs-Demo/1.0` 和 `Accept: applica
 回调保留 JSON 大整数和小数精度，拒绝重复 JSON 字段。`timestamp` 必须是非负整数毫秒值，允许当前时间前后 5 分钟，包含边界。验签或时间窗不通过返回 HTTP 401。Demo 不额外设置回调正文的固定大小上限。
 
 上游请求显式配置 10 秒超时，不跟随重定向。成功必须满足顶层整数 `code` 为 `0` 且包含 `data`；不能只看 HTTP 200 或 `header.resultCode`。HTTP 错误、业务码非零、响应格式异常或超时统一返回 HTTP 502，并保留诊断日志。网络库、代理默认行为和 TLS 特征仍由各运行时决定。
-
-网络失败时，`DSPAY_ERROR` 日志的 `details` 会保留 Node.js 底层 `cause` 链及错误码，例如 `ECONNRESET`、`ENOTFOUND`、`UND_ERR_CONNECT_TIMEOUT`。错误响应同时显示底层原因；10 秒超时会明确提示。没有收到 HTTP 响应的 `fetch failed` 与 Cloudflare HTTP 403 是不同故障，需根据实际错误码排查。

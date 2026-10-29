@@ -21,21 +21,21 @@ python3 --version
 > Replace `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` with values from the DSPay Merchant Portal. The production API URL is used by default. Keep `apiSecret` on the merchant server; never put it in frontend code, URLs, browser storage, or online tools.
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 ./start.sh
 ```
 
 The API address defaults to `https://pay-api.ds.pro` in both the script and direct Python startup; no API address prompt is shown. Set `DSPAY_BASE_URL` explicitly only to test another environment. The script prompts for missing `MERCHANT_NO` and `API_SECRET`; secret input is hidden. Values are not saved. Set the variables first for non-interactive use:
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 python3 -B src/server.py
 # Background alternative: ./start.sh; stop with ./stop.sh
 ```
 
-`PORT` defaults to `3000`; `PYTHON_BIN` optionally selects the interpreter for `start.sh`. `FRONT_END_DIR` optionally overrides the shared `Demo/front-end` directory; relative paths are resolved from the Python Demo directory when using `start.sh`. The DSPay API base URL must be complete ASCII HTTP(S) origins (use punycode for internationalized domains) without a trailing slash, path, query, fragment, credentials, or whitespace. Invalid configuration fails with the field and required format; it is not silently repaired. `MERCHANT_NO` must start with `DSM` or `M` followed by 1–19 digits.
+`PORT` defaults to `3000`; `PYTHON_BIN` optionally selects the interpreter for `start.sh`. `FRONT_END_DIR` optionally overrides the shared `Demo/frontend` directory; relative paths are resolved from the Python Demo directory when using `start.sh`. The DSPay API base URL must be complete ASCII HTTP(S) origins (use punycode for internationalized domains) without a trailing slash, path, query, fragment, credentials, or whitespace. Invalid configuration fails with the field and required format; it is not silently repaired. `MERCHANT_NO` must start with `DSM` or `M` followed by 1–19 digits.
 
 The background process writes `server.pid` and `logs/server.log`. Open `http://localhost:3000` to use the shared storefront. For real webhook delivery, expose this port through a public URL and configure the merchant's public `/notify` endpoint in the portal.
 
@@ -54,12 +54,12 @@ The background process writes `server.pid` and `logs/server.log`. Open `http://l
 
 Amounts remain decimal strings; callback JSON decimals use `Decimal`. Signing preserves non-blank strings without trimming. The optional empty-value exceptions and payment-method normalization follow SDK §4.4. Binary floating-point values are not accepted by the signer. JSON numbers exceeding the demo's 4096-digit limit and duplicate object keys are rejected. The original request objects are not mutated.
 
-Upstream requests identify the client as `DSPay-Python-Demo/1.0`, have a 10-second timeout, and do not follow redirects. HTTP errors retain `CF-Ray` when supplied by the gateway for troubleshooting. HTTP errors, invalid response envelopes, and nonzero business codes become HTTP 502; HTTP 200 alone is not success. Callbacks require UTF-8 JSON, `Content-Length`, and `X-DSPay-Signature`; chunked bodies are not supported. The Demo does not impose a fixed callback-body size cap; upstream responses are limited to 1 MiB. Valid, fresh callbacks receive HTTP 200 with `{"code":"SUCCESS","msg":"ok"}`; invalid signatures, timestamps, or JSON receive a failure response.
+Upstream requests identify the client as `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36`, have a 10-second timeout, and do not follow redirects. HTTP errors retain `CF-Ray` when supplied by the gateway for troubleshooting. HTTP errors, invalid response envelopes, and nonzero business codes become HTTP 502; HTTP 200 alone is not success. Callbacks require UTF-8 JSON, `Content-Length`, and `X-DSPay-Signature`; chunked bodies are not supported. The Demo does not impose a fixed callback-body size cap; upstream responses are limited to 1 MiB. Valid, fresh callbacks receive HTTP 200 with `{"code":"SUCCESS","msg":"ok"}`; invalid signatures, timestamps, or JSON receive a failure response.
 
 ## Local Tests and Production Boundaries
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 python3 -B -m unittest discover -s test -v
 ```
 

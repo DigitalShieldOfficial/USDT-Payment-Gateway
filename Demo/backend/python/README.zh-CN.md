@@ -21,21 +21,21 @@ python3 --version
 > 将 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 替换为 DSPay 商户后台中的真实参数。API 默认使用正式环境地址，无需填写。`apiSecret` 只能保存在商户服务端，禁止放入前端代码、URL、浏览器存储或在线工具。
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 ./start.sh
 ```
 
 脚本和直接运行 Python 均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。脚本先询问缺少的 `MERCHANT_NO` 和 `API_SECRET`，密钥输入不回显，输入值不会保存。非交互运行时先设置环境变量：
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
 export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 python3 -B src/server.py
 # 后台运行可用 ./start.sh；执行 ./stop.sh 停止
 ```
 
-`PORT` 默认 `3000`；`PYTHON_BIN` 可指定 `start.sh` 使用的解释器。`FRONT_END_DIR` 可覆盖共享的 `Demo/front-end` 目录；使用 `start.sh` 时，相对路径从 Python Demo 目录解析。DSPay API 基础地址必须是仅含 ASCII 字符的完整 HTTP(S) 源地址（国际化域名需使用 punycode），不允许尾部斜杠、路径、查询参数、片段、用户名密码或空白字符。配置不合法时明确报出字段和要求，不静默修正。`MERCHANT_NO` 必须以 `DSM` 或 `M` 开头，后接 1～19 位数字。
+`PORT` 默认 `3000`；`PYTHON_BIN` 可指定 `start.sh` 使用的解释器。`FRONT_END_DIR` 可覆盖共享的 `Demo/frontend` 目录；使用 `start.sh` 时，相对路径从 Python Demo 目录解析。DSPay API 基础地址必须是仅含 ASCII 字符的完整 HTTP(S) 源地址（国际化域名需使用 punycode），不允许尾部斜杠、路径、查询参数、片段、用户名密码或空白字符。配置不合法时明确报出字段和要求，不静默修正。`MERCHANT_NO` 必须以 `DSM` 或 `M` 开头，后接 1～19 位数字。
 
 后台进程的 PID 保存在 `server.pid`，日志写入 `logs/server.log`。打开 `http://localhost:3000` 即可使用共享商店页。接收真实回调时，将该端口代理到公网，并在商户后台配置公网 `/notify` 接口。
 
@@ -54,12 +54,12 @@ python3 -B src/server.py
 
 金额保留十进制字符串；回调 JSON 的小数使用 `Decimal`。签名不修剪非空白字符串，按 SDK §4.4 处理可选字段空值及支付方式规范化。签名模块不接受二进制浮点数；超过演示程序 4096 位限制的 JSON 数字及重复对象字段会报错。原始请求对象不会被改写。
 
-上游请求使用 `DSPay-Python-Demo/1.0` 客户端标识，超时为 10 秒，不跟随重定向。HTTP 错误会保留网关返回的 `CF-Ray`（如有），便于排查。HTTP 失败、响应格式异常或业务码非零返回 HTTP 502，HTTP 200 本身不代表成功。回调要求 UTF-8 JSON、`Content-Length` 和 `X-DSPay-Signature`，不支持分块请求体；Demo 不额外设置回调请求体大小上限；上游响应上限为 1 MiB。验签和时间窗校验通过时返回 HTTP 200 及 `{"code":"SUCCESS","msg":"ok"}`；签名、时间戳或 JSON 异常时返回失败响应。
+上游请求使用 `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` 客户端标识，超时为 10 秒，不跟随重定向。HTTP 错误会保留网关返回的 `CF-Ray`（如有），便于排查。HTTP 失败、响应格式异常或业务码非零返回 HTTP 502，HTTP 200 本身不代表成功。回调要求 UTF-8 JSON、`Content-Length` 和 `X-DSPay-Signature`，不支持分块请求体；Demo 不额外设置回调请求体大小上限；上游响应上限为 1 MiB。验签和时间窗校验通过时返回 HTTP 200 及 `{"code":"SUCCESS","msg":"ok"}`；签名、时间戳或 JSON 异常时返回失败响应。
 
 ## 本地测试与生产边界
 
 ```bash
-cd Demo/back-end/python
+cd Demo/backend/python
 python3 -B -m unittest discover -s test -v
 ```
 

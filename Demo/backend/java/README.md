@@ -4,7 +4,7 @@
 
 JDK 8+, zero external dependencies. It calls `POST /dspay/public/order/create`, redirects to the returned `checkoutUrl`, and verifies webhooks using the shared ASCII-sorted canonical field string.
 
-Runtime baseline: JDK 8 minimum; verified end-to-end on Amazon Corretto `1.8.0_504` (JDK 8) and Eclipse Temurin `21.0.11`. Maven and Gradle are not required; the source uses only the JDK standard library. `./start.sh` compiles to `build/` and runs `java -cp build DspayMockMerchant` (works on JDK 8, where single-file source launch is unavailable).
+Runtime baseline: JDK 8 minimum; transport verified on Corretto `1.8.0_504`, Microsoft OpenJDK `11.0.27`, and Temurin `17.0.21` / `21.0.11`. Full startup and business regression checks cover JDK 8 and 21. Maven and Gradle are not required; the source uses only the JDK standard library. `./start.sh` compiles to `build/` and runs `java -cp build DspayMockMerchant` using the same JDK 8+ installation.
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
 
@@ -15,26 +15,27 @@ Startup requires only the merchant number and API secret; no access URL configur
 For ngrok, run `ngrok http 3000` (match the Demo port). For nginx, proxy to `http://127.0.0.1:3000` and set `proxy_set_header Host $http_host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, and `proxy_set_header X-Forwarded-Host $http_host;` to replace client-supplied forwarded hosts. The Demo trusts proxy headers only from loopback peers. Supply one correct host and protocol, not comma-separated lists, and access the public service through that proxy.
 
 ```bash
-cd Demo/back-end/java
-mkdir -p build && javac -d build src/DspayMockMerchant.java
+cd Demo/backend/java
+mkdir -p build && javac -d build src/DspayMockMerchant.java src/DspayTransport.java
 java -DmerchantNo="REPLACE_WITH_REAL_MERCHANT_NO" -DapiSecret="REPLACE_WITH_REAL_API_SECRET" \
   -cp build DspayMockMerchant
 ```
 
-For background use, run `./start.sh`. It prompts for `MERCHANT_NO` and `API_SECRET`; secret input is hidden. Set any of these environment variables beforehand to skip its prompt. `PORT` is optional and defaults to `3000`; `FRONT_END_DIR` optionally selects a directory containing `index.html` (default `../../front-end`; script-relative paths resolve from the Java Demo directory). Direct Java startup also accepts this environment variable; `-DfrontEndDir` takes precedence. Explicit empty values or a missing `index.html` cause startup to fail. The script does not save entered values, so enter them again on the next start or provide them through the environment. Non-interactive runs require the two credential variables.
+For background use, run `./start.sh`. It prompts for `MERCHANT_NO` and `API_SECRET`; secret input is hidden. Set any of these environment variables beforehand to skip its prompt. `PORT` is optional and defaults to `3000`; `FRONT_END_DIR` optionally selects a directory containing `index.html` (default `../../frontend`; script-relative paths resolve from the Java Demo directory). Direct Java startup also accepts this environment variable; `-DfrontEndDir` takes precedence. Explicit empty values or a missing `index.html` cause startup to fail. The script does not save entered values, so enter them again on the next start or provide them through the environment. Non-interactive runs require the two credential variables.
 
 - `GET /create`: create the order server-to-server and redirect to `checkoutUrl`
 - `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
 - `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
-- `GET /` serves the front-end store page (same origin as the API; override the directory with `FRONT_END_DIR`)
+- `GET /` serves the frontend store page (same origin as the API; override the directory with `FRONT_END_DIR`)
 - `returnUrl` redirects back to the store page; `successRedirectUrl` lands on `/query` showing the real order status — a redirect is never proof of payment
 
 Compile and run the local test:
 
 ```bash
 mkdir -p /tmp/dspay-java
-javac -d /tmp/dspay-java src/DspayMockMerchant.java test/DspayMockMerchantTest.java
+javac -d /tmp/dspay-java src/DspayMockMerchant.java src/DspayTransport.java test/DspayMockMerchantTest.java test/DspayTransportTest.java
 java -cp /tmp/dspay-java DspayMockMerchantTest
+java -cp /tmp/dspay-java DspayTransportTest
 ```
 
 ## Request and Response Logs
@@ -45,7 +46,7 @@ From the backend directory, run `tail -f logs/server.log` for live logs after `.
 
 Check both HTTP status and DSPay business codes. Verification or redirects do not prove merchant accounting or fulfillment. API secrets and JSON signature fields are redacted; other business parameters remain visible for integration debugging.
 
-The Java client sends `User-Agent: DSPay-Java-Demo/1.0` and `Accept: application/json`. For Cloudflare block HTML, inspect the HTTP status, `CF-Ray`, and response body in `DSPAY_RESPONSE` logs. Give the Ray ID to the API operator to identify the rule; an explicit client identifier does not guarantee acceptance by every firewall rule.
+The Java client sends `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` and `Accept: application/json`. For Cloudflare block HTML, inspect the HTTP status, `CF-Ray`, and response body in `DSPAY_RESPONSE` logs. Give the Ray ID to the API operator to identify the rule; an explicit client identifier does not guarantee acceptance by every firewall rule.
 
 ## Shared Behavior Across All Four Demos
 
@@ -54,3 +55,7 @@ The Java client sends `User-Agent: DSPay-Java-Demo/1.0` and `Accept: application
 Callbacks preserve large JSON integers and decimal precision and reject duplicate object keys. `timestamp` must be a nonnegative integer in milliseconds within an inclusive ±5-minute window. Invalid signatures or timestamps return HTTP 401. The Demo imposes no extra fixed callback-body size cap.
 
 Upstream requests explicitly use 10-second timeouts and refuse redirects. Success requires a top-level integer `code` equal to `0` and a `data` field; HTTP 200 or `header.resultCode` alone is insufficient. HTTP failures, nonzero business codes, malformed responses, and timeouts return HTTP 502 with diagnostic logs. HTTP libraries, default proxy behavior, and TLS characteristics remain runtime-specific.
+
+Requests use the Java 8 public `Socket` / `SSLSocket` APIs through `src/DspayTransport.java`, with HTTP/1.1 and the same Chrome 147 User-Agent as the other Demos. No JDK 11 API, third-party library, native binary, or automatic proxy configuration is required. HTTPS verifies the certificate chain and hostname and requires TLS 1.2 or newer. The 10-second deadline covers connection, TLS handshake, writes, and response reads. The client handles fixed-length, chunked, and connection-delimited responses, supports gzip/deflate, and does not follow redirects. This is a small POST implementation, not a complete backport of JDK 11 HttpClient.
+
+Transport tests generate temporary local certificates with the JDK `keytool`; they do not disable TLS verification.

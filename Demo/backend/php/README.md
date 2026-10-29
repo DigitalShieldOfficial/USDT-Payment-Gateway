@@ -1,10 +1,14 @@
 [English](README.md) | [中文](README.zh-CN.md)
 
-# DSPay Node.js Mock Merchant
+# DSPay PHP Mock Merchant
 
-The single runtime baseline is Node.js `18.20.8` + npm `10.8.2`, with no npm dependencies. The service signs and calls `POST /dspay/public/order/create` and `/query`; it never builds a signed cashier URL in the browser.
+PHP 5.6+, no Composer. The backend calls the DSPay create/query APIs and redirects to the `checkoutUrl` returned by the create response.
 
-The minimum and tested baseline are both Node.js `18.20.8` + npm `10.8.2`. The repository includes `.nvmrc`, and `package.json` declares `node >=18.20.8`. Multiple Node.js installations are not required, and no third-party npm packages are used.
+Runtime baseline: PHP 5.6 minimum; all syntax checks, create-signature tests, and callback-verification tests were run with PHP CLI `5.6.40` and `8.5.10`. Composer is not required; only standard PHP extensions are used. `hash_equals()` requires PHP 5.6+.
+
+> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders and must be replaced. The API address defaults to the DSPay production API; override it only when testing another environment.
+
+Run `./start.sh` and enter any missing `MERCHANT_NO` and `API_SECRET` values; secret input is hidden. `PORT` is optional and defaults to `3000`, and `FRONT_END_DIR` optionally overrides the served frontend directory (default `../../frontend`). Entered values are not saved. The server runs in the background (PID in `server.pid`); stop it with `./stop.sh`.
 
 The API address defaults to `https://pay-api.ds.pro` for both script and direct startup, so it is not prompted. Set `DSPAY_BASE_URL` explicitly only to test another environment. API addresses must be complete HTTP(S) origins without a trailing slash, path, query, credentials, or whitespace; invalid explicit values are rejected rather than repaired.
 
@@ -13,37 +17,35 @@ Startup requires only the merchant number and API secret; no access URL configur
 For ngrok, run `ngrok http 3000` (match the Demo port). For nginx, proxy to `http://127.0.0.1:3000` and set `proxy_set_header Host $http_host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, and `proxy_set_header X-Forwarded-Host $http_host;` to replace client-supplied forwarded hosts. The Demo trusts proxy headers only from loopback peers. Supply one correct host and protocol, not comma-separated lists, and access the public service through that proxy.
 
 ```bash
-nvm install
-nvm use
-node --version  # v18.20.8
-npm --version   # 10.8.2
-```
-
-> `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
-
-Run `./start.sh` for a background service. It prompts for missing `MERCHANT_NO` and `API_SECRET`; secret input is hidden. `PORT` is optional and defaults to `3000`; `FRONT_END_DIR` optionally overrides the served front-end directory (default `../../front-end`). Entered values are not saved, so provide them again on the next start or set environment variables first.
-
-```bash
-cd Demo/back-end/nodejs
+cd Demo/backend/php
 ./start.sh
 ```
 
 For non-interactive use, set the environment variables first:
 
 ```bash
-cd Demo/back-end/nodejs
-MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO" API_SECRET="REPLACE_WITH_REAL_API_SECRET" \
-npm start
-# npm start is equivalent to node src/server.js; background alternative: ./start.sh (stop with ./stop.sh)
+cd Demo/backend/php
+export MERCHANT_NO="REPLACE_WITH_REAL_MERCHANT_NO"
+export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
+php -S 0.0.0.0:3000 server.php
+# background alternative: ./start.sh (prompts for missing variables, stop with ./stop.sh)
 ```
 
-- `GET /create`: server-to-server create, then 302 to returned `checkoutUrl`
+- `GET /create`: call `POST /dspay/public/order/create`, then 302 to returned `checkoutUrl`
 - `GET /query?orderNo=...` or `?outOrderNo=...`: signed authoritative query
 - `POST /notify`: verify `X-DSPay-Signature` over the shared ASCII-sorted canonical field string
-- `GET /` serves the front-end store page (same origin as the API; override the directory with `FRONT_END_DIR`)
+- `GET /` serves the frontend store page (same origin as the API)
 - `returnUrl` redirects back to the store page; `successRedirectUrl` lands on `/query` showing the real order status — a redirect is never proof of payment
 
-Run tests with `npm test`.
+Run local tests:
+
+```bash
+php test/ValidateApiBase.php
+php test/ValidateNetworkError.php
+php test/ValidateCreateOrder.php
+php test/VerifyCallback.php
+php test/ValidateHttpCreate.php  # skipped unless TEST_CREATE_URL is configured
+```
 
 ## Request and Response Logs
 
@@ -53,7 +55,7 @@ From the backend directory, run `tail -f logs/server.log` for live logs after `.
 
 Check both HTTP status and DSPay business codes. Verification or redirects do not prove merchant accounting or fulfillment. API secrets and JSON signature fields are redacted; other business parameters remain visible for integration debugging.
 
-The Node.js client sends `User-Agent: DSPay-Nodejs-Demo/1.0` and `Accept: application/json`. For Cloudflare HTTP 403, logs retain the response body, `cfRay`, and `contentType`; the page error also includes `CF-Ray`. Give the Ray ID to the API operator to identify the blocking rule. Changing the User-Agent does not guarantee acceptance by every rule.
+The PHP client sends `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36` and `Accept: application/json`. Cloudflare HTTP 403 logs retain the response body, `cfRay`, and `contentType`; error messages also include `CF-Ray`. The API operator must inspect the matching security event using the Ray ID. A client identifier does not guarantee that the request will be accepted.
 
 ## Shared Behavior Across All Four Demos
 
@@ -62,5 +64,3 @@ The Node.js client sends `User-Agent: DSPay-Nodejs-Demo/1.0` and `Accept: applic
 Callbacks preserve large JSON integers and decimal precision and reject duplicate object keys. `timestamp` must be a nonnegative integer in milliseconds within an inclusive ±5-minute window. Invalid signatures or timestamps return HTTP 401. The Demo imposes no extra fixed callback-body size cap.
 
 Upstream requests explicitly use 10-second timeouts and refuse redirects. Success requires a top-level integer `code` equal to `0` and a `data` field; HTTP 200 or `header.resultCode` alone is insufficient. HTTP failures, nonzero business codes, malformed responses, and timeouts return HTTP 502 with diagnostic logs. HTTP libraries, default proxy behavior, and TLS characteristics remain runtime-specific.
-
-For network failures, `DSPAY_ERROR.details` retains the underlying Node.js cause chain and error codes such as `ECONNRESET`, `ENOTFOUND`, and `UND_ERR_CONNECT_TIMEOUT`. Error responses also show the underlying cause; the 10-second timeout is reported explicitly. A `fetch failed` error without an HTTP response is distinct from a Cloudflare HTTP 403 and must be diagnosed using its actual error code.

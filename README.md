@@ -96,11 +96,11 @@ The mock merchant demo lets you experience the complete DS-Pay payment integrati
 
 | Integration Guides                                  |
 |-----------------------------------------------------|
-| [Java Integration Guide](./Demo/back-end/java)      |
-| [Node.js Integration Guide](./Demo/back-end/nodejs) |
-| [PHP Integration Guide](./Demo/back-end/php)        |
-| [Python Integration Guide](./Demo/back-end/python) |
-| [Frontend Integration Guide](./Demo/front-end/) |
+| [Java Integration Guide](./Demo/backend/java)      |
+| [Node.js Integration Guide](./Demo/backend/nodejs) |
+| [PHP Integration Guide](./Demo/backend/php)        |
+| [Python Integration Guide](./Demo/backend/python) |
+| [Frontend Integration Guide](./Demo/frontend/) |
 
 [View More Demos](./Demo)
 

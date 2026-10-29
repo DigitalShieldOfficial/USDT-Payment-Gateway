@@ -43,9 +43,9 @@ class StartupTest(unittest.TestCase):
             raise unittest.SkipTest("Install runtimes before cross-language tests: " + ", ".join(missing))
         cls.directory = tempfile.TemporaryDirectory(prefix="dspay-startup-acceptance-")
         cls.demo = Path(cls.directory.name) / "Demo"
-        shutil.copytree(ROOT / "Demo/front-end", cls.demo / "front-end")
+        shutil.copytree(ROOT / "Demo/frontend", cls.demo / "frontend")
         for language in LANGUAGES:
-            shutil.copytree(ROOT / "Demo/back-end" / language, cls.demo / "back-end" / language,
+            shutil.copytree(ROOT / "Demo/backend" / language, cls.demo / "backend" / language,
                             ignore=shutil.ignore_patterns("logs", "server.pid", "build", "node_modules",
                                                          "__pycache__", ".env*"))
         cls.orders = []
@@ -106,8 +106,12 @@ class StartupTest(unittest.TestCase):
         return env, port
 
     def assert_order_urls(self, port, public, headers=None):
-        with self.opener.open("http://127.0.0.1:" + str(port) + "/", timeout=5) as response:
-            self.assertEqual(response.status, 200)
+        page = (self.demo / "frontend" / "index.html").read_bytes()
+        for route in ("/", "/index.html"):
+            with self.opener.open("http://127.0.0.1:" + str(port) + route, timeout=5) as response:
+                self.assertEqual(response.status, 200)
+                self.assertIn("text/html", response.headers.get("Content-Type", ""))
+                self.assertEqual(response.read(), page)
         before = len(self.orders)
         try:
             self.opener.open(Request("http://127.0.0.1:" + str(port)
@@ -123,7 +127,7 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(order["successRedirectUrl"], public + "/payment/success?outOrderNo=STARTUP-TEST")
 
     def start_script(self, language, env, entered=None):
-        path = self.demo / "back-end" / language / "start.sh"
+        path = self.demo / "backend" / language / "start.sh"
         if entered is None:
             return subprocess.run(["bash", str(path)], env=env, stdin=subprocess.DEVNULL,
                                   capture_output=True, text=True, timeout=40)
@@ -147,7 +151,7 @@ class StartupTest(unittest.TestCase):
                 os.close(slave)
 
     def stop_script(self, language):
-        demo = self.demo / "back-end" / language
+        demo = self.demo / "backend" / language
         result = subprocess.run(["bash", str(demo / "stop.sh")], capture_output=True, text=True, timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((demo / "server.pid").exists())
@@ -198,18 +202,18 @@ class StartupTest(unittest.TestCase):
                             with error:
                                 self.assertEqual(signed, "invalid-signature")
                                 self.assertEqual(error.code, 401)
-                    log = (self.demo / "back-end" / language / "logs/server.log").read_text()
+                    log = (self.demo / "backend" / language / "logs/server.log").read_text()
                     if language == "java":
-                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "DSPay-Java-Demo/1.0")
+                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
                         self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
                         self.assertIn("CF-Ray=test-ray-id", log)
                     if language == "nodejs":
-                        self.assertEqual({key.lower(): value for key, value in self.api_headers[-1].items()}.get("user-agent"), "DSPay-Nodejs-Demo/1.0")
-                        self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
+                        self.assertIn("Mozilla/5.0", {key.lower(): value for key, value in self.api_headers[-1].items()}.get("user-agent", ""))
+                        self.assertEqual({key.lower(): value for key, value in self.api_headers[-1].items()}.get("accept"), "application/json")
                         self.assertIn('"cfRay":"test-ray-id"', log)
                         self.assertIn("DSPay HTTP 403; CF-Ray: test-ray-id", log)
                     if language == "php":
-                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "DSPay-PHP-Demo/1.0")
+                        self.assertEqual(self.api_headers[-1].get("User-Agent"), "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36")
                         self.assertEqual(self.api_headers[-1].get("Accept"), "application/json")
                         self.assertIn('"cfRay":"test-ray-id"', log)
                         self.assertIn("DSPay HTTP 403; CF-Ray: test-ray-id", log)
@@ -233,16 +237,16 @@ class StartupTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(field, result.stdout + result.stderr)
                     self.assertNotIn("Server started successfully", result.stdout)
-                    self.assertFalse((self.demo / "back-end" / language / "server.pid").exists())
+                    self.assertFalse((self.demo / "backend" / language / "server.pid").exists())
 
     def test_03_direct_start_uses_the_listening_port(self):
         for language in LANGUAGES:
             with self.subTest(language=language):
-                demo = self.demo / "back-end" / language
+                demo = self.demo / "backend" / language
                 env, port = self.environment()
                 if language == "java":
                     (demo / "build").mkdir(exist_ok=True)
-                    subprocess.run(["javac", "-d", "build", "src/DspayMockMerchant.java"], cwd=demo, check=True)
+                    subprocess.run(["javac", "-d", "build", "src/DspayMockMerchant.java", "src/DspayTransport.java"], cwd=demo, check=True)
                     command = ["java", "-DmerchantNo=DSM001", "-cp", "build", "DspayMockMerchant"]
                 elif language == "nodejs":
                     command = ["node", "src/server.js"]
@@ -267,12 +271,12 @@ class StartupTest(unittest.TestCase):
                     process.communicate(timeout=5)
 
     def test_04_consistent_inputs_signatures_callbacks_and_api_errors(self):
-        spec = importlib.util.spec_from_file_location('reference_signer', ROOT / 'Demo/back-end/python/src/signer.py')
+        spec = importlib.util.spec_from_file_location('reference_signer', ROOT / 'Demo/backend/python/src/signer.py')
         reference = importlib.util.module_from_spec(spec); spec.loader.exec_module(reference)
         for language in LANGUAGES:
             with self.subTest(language=language):
                 env, port = self.environment()
-                demo = self.demo / 'back-end' / language
+                demo = self.demo / 'backend' / language
                 base = 'http://127.0.0.1:' + str(port)
                 def request(path, body=None, signature=None, timeout=15):
                     headers = {'Content-Type': 'application/json'} if body is not None else {}
@@ -367,17 +371,17 @@ class StartupTest(unittest.TestCase):
                 self.assertEqual(response.code, 502)
                 body = json.load(response)
             self.assertEqual(body['code'], 'DSPAY_ERROR')
-            self.assertIn('fetch failed', body['message'])
+            self.assertIn('ECONNRESET', body['message'])
             self.assertRegex(body['message'], r'UND_ERR_SOCKET|ECONNRESET')
-            log = (self.demo / 'back-end/nodejs/logs/server.log').read_text()
-            self.assertIn('"cause":', log)
+            log = (self.demo / 'backend/nodejs/logs/server.log').read_text()
+            self.assertIn('"code":"ECONNRESET"', log)
             self.assertRegex(log, r'UND_ERR_SOCKET|ECONNRESET')
             self.assertNotIn('demo-secret', log)
         finally:
             self.stop_script('nodejs')
 
     def test_06_java_frontend_directory_configuration(self):
-        demo = self.demo / 'back-end/java'
+        demo = self.demo / 'backend/java'
         custom = self.demo / 'custom front end'
         custom.mkdir(exist_ok=True)
         page = b'<!doctype html><title>Configured Java storefront</title>'
