@@ -42,7 +42,6 @@ Security maintenance covers the following versions:
 | Latest `main` revision | Supported |
 | Latest published release tag | Supported |
 | Older tags and historical revisions | Not maintained |
-| Other branches, including `demo-server` | Not maintained independently; reproduce on a supported version |
 
 The latest release tag means the tag identified by the maintainers as the
 latest release, not the tag with the most recent Git creation date. Until a
