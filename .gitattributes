@@ -1,0 +1,7 @@
+# Include Demo source files in GitHub language statistics.
+Demo/**/*.html -linguist-documentation
+Demo/**/*.java -linguist-documentation
+Demo/**/*.js -linguist-documentation
+Demo/**/*.php -linguist-documentation
+Demo/**/*.py -linguist-documentation
+Demo/**/*.sh -linguist-documentation
