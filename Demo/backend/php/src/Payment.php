@@ -101,7 +101,10 @@ final class Payment
             $responseHeaders = http_get_last_response_headers();
         } else {
             $legacyHeaderVariable = 'http_response_header';
-            $responseHeaders = isset($$legacyHeaderVariable) ? $$legacyHeaderVariable : array();
+            // The direct isset() reference makes the engine bind the name to a CV slot;
+            // without it, on PHP < 8.4 the headers injected by the http wrapper are not
+            // visible to the dynamic $$name read (verified on PHP 8.3: status parsed as 0).
+            $responseHeaders = isset($http_response_header) ? $$legacyHeaderVariable : array();
         }
         $status = 0;
         if (isset($responseHeaders[0]) && preg_match('/\s([0-9]{3})\s/', $responseHeaders[0], $m)) {
