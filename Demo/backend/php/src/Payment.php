@@ -102,7 +102,7 @@ final class Payment
         } else {
             $legacyHeaderVariable = 'http_response_header';
             // The direct isset() reference makes the engine bind the name to a CV slot;
-            // without it, on PHP < 8.4 the headers injected by the http wrapper are not
+            // without it, on PHP >= 8.3 the headers injected by the http wrapper are not
             // visible to the dynamic $$name read (verified on PHP 8.3: status parsed as 0).
             $responseHeaders = isset($http_response_header) ? $$legacyHeaderVariable : array();
         }
