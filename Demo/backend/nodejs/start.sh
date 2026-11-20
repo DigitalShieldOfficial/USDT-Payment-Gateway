@@ -83,7 +83,7 @@ for ((attempt = 0; attempt < 30; attempt++)); do
         echo "Local callback endpoint: $LOCAL_BASE_URL/notify (not reachable by DSPay)"
         echo "Next: open $LOCAL_BASE_URL/ in your browser."
         echo "For public access: run ngrok http $PORT, or proxy nginx to port $PORT."
-        echo "Open the public URL to create orders; payment return links follow that request URL."
+        echo "Optional: set PUBLIC_BASE_URL to your trusted public origin for payment return links; otherwise links are omitted."
         echo "Merchant Portal callback URL: <your public URL>/notify"
         echo "Example: https://your-name.ngrok-free.dev/notify"
         echo "Keep the tunnel running; update the portal if the public URL changes."

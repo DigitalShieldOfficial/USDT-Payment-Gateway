@@ -17,6 +17,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from signer import canonical_json, parse_json, sign_create, sign_query, verify_callback
 
 MAX_RESPONSE = 1024 * 1024
+MAX_CALLBACK_BYTES = 64 * 1024
 FRONT_END = Path(__file__).resolve().parents[3] / "frontend"
 
 
@@ -63,6 +64,7 @@ class Config:
     api_secret: str
     port: int = 3000
     front_end: Path = FRONT_END
+    public_base: str = None
 
     @classmethod
     def from_env(cls):
@@ -78,7 +80,8 @@ class Config:
             raise ValueError("FRONT_END_DIR must contain index.html")
         return cls(origin(os.environ.get("DSPAY_BASE_URL", "https://pay-api.ds.pro"), "DSPAY_BASE_URL"),
                    merchant_no(os.environ["MERCHANT_NO"]), os.environ["API_SECRET"],
-                   int(port), front_end.resolve())
+                   int(port), front_end.resolve(),
+                   origin(os.environ["PUBLIC_BASE_URL"], "PUBLIC_BASE_URL") if "PUBLIC_BASE_URL" in os.environ else None)
 
 
 class UpstreamError(Exception):
@@ -181,14 +184,6 @@ def handler_for(config):
                     raise ValueError(key + " must occur exactly once")
             return {key: values[0] for key, values in parsed.items()}
 
-        def request_origin(self):
-            local = self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
-            host = self.headers.get("X-Forwarded-Host") if local and "X-Forwarded-Host" in self.headers else self.headers.get("Host")
-            proto = self.headers.get("X-Forwarded-Proto") if local and "X-Forwarded-Proto" in self.headers else "http"
-            if proto not in ("http", "https"):
-                raise ValueError("X-Forwarded-Proto must be http or https")
-            return origin(proto + "://" + (host or ""), "Request origin")
-
         def do_GET(self):
             if urlsplit(self.path).path in ("/create", "/query"):
                 log_event("DEMO_REQUEST", config.api_secret, method="GET", target=self.path)
@@ -201,13 +196,15 @@ def handler_for(config):
                     if "payAmount" not in args:
                         raise ValueError("payAmount is required; minimum 0.01")
                     number = order_identifier(args["outOrderNo"], "outOrderNo") if "outOrderNo" in args else "DEMO-" + uuid.uuid4().hex
-                    base = self.request_origin()
+                    base = config.public_base
                     order = {"merchantNo": config.merchant_no, "outOrderNo": number,
                              "payAmount": amount(args["payAmount"], "payAmount", 12, 2, Decimal("0.01")),
                              "attach": {"demo": "python", "customerId": "CUST-1001"},
-                             "allowedPaymentMethods": [], "timestamp": int(time.time() * 1000),
+                             "allowedPaymentMethods": [], "timestamp": int(time.time() * 1000)}
+                    if base is not None:
+                        order.update({
                              "returnUrl": base + "/payment/return?" + urlencode({"outOrderNo": number}),
-                             "successRedirectUrl": base + "/payment/success?" + urlencode({"outOrderNo": number})}
+                             "successRedirectUrl": base + "/payment/success?" + urlencode({"outOrderNo": number})})
                     if "productPrice" in args:
                         order["productPrice"] = amount(args["productPrice"], "productPrice", 14, 6)
                         order["productPriceCurrency"] = "USD"
@@ -272,6 +269,12 @@ def handler_for(config):
             size = self.headers.get("Content-Length", "")
             if self.headers.get("Transfer-Encoding") or not re.fullmatch(r"[0-9]+", size):
                 self.respond(400, {"code": "FAIL", "msg": "Content-Length is required; chunked bodies are not supported"})
+                return
+            # Decimal avoids Python integer-string digit limits for oversized headers.
+            size = Decimal(size)
+            if size > MAX_CALLBACK_BYTES:
+                self.close_connection = True
+                self.respond(413, {"code": "FAIL", "msg": "Callback body exceeds 65536 bytes"})
                 return
             try:
                 raw = self.rfile.read(int(size)).decode("utf-8")

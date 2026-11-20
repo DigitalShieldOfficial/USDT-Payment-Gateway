@@ -110,8 +110,6 @@ class ServerTest(unittest.TestCase):
         canonical = ('allowedPaymentMethods=&attach={"customerId":"CUST-1001","demo":"python"}'
                      '&merchantNo=DSM001&outOrderNo=ORDER-1&payAmount=0.02&productId= item '
                      '&productPrice=0.02&productPriceCurrency=USD'
-                     f'&returnUrl={self.base}/payment/return?outOrderNo=ORDER-1'
-                     f'&successRedirectUrl={self.base}/payment/success?outOrderNo=ORDER-1'
                      '&timestamp=' + str(body["timestamp"]))
         expected = hmac.new(b"demo-secret", canonical.encode(), hashlib.sha256).hexdigest()
         self.assertEqual(body["signature"], expected)
@@ -167,6 +165,17 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(json.loads(raw)["message"], "DSPay HTTP 403; CF-Ray: test-ray-LAX")
             self.assertEqual(len(self.calls), 1)
 
+    def test_callback_size_boundary_and_oversized_length_header(self):
+        now = int(time.time() * 1000)
+        for size, expected in ((65536, 200), (65537, 413)):
+            raw = json.dumps({"timestamp": now, "padding": ""}, separators=(',', ':'))
+            padding = 'x' * (size - len(raw.encode()))
+            raw = raw.replace('"padding":""', '"padding":"' + padding + '"').encode()
+            canonical = 'padding=' + padding + '&timestamp=' + str(now)
+            signature = hmac.new(b"demo-secret", canonical.encode(), hashlib.sha256).hexdigest()
+            self.assertEqual(self.request('/notify', raw, {'X-DSPay-Signature': signature})[0], expected)
+        self.assertEqual(self.request('/notify', b'', {'Content-Length': '9' * 5000})[0], 413)
+
     def test_http_callback_ack_and_failure(self):
         now = int(time.time() * 1000)
         raw = json.dumps({"timestamp": now, "status": "COMPLETED", "orderNo": "1949695024925671424"}).encode()
@@ -207,7 +216,7 @@ class ServerTest(unittest.TestCase):
                          "https://xn--fsqu00a.xn--0zwm56d")
         invalid_utf8 = os.fsdecode(b"\xef")
         for suffix in [invalid_utf8, "\ufffd", "\u200b", "\ufeff", " ", "\t", "\r\n", "\x7f"]:
-            for field in ["DSPAY_BASE_URL"]:
+            for field in ["DSPAY_BASE_URL", "PUBLIC_BASE_URL"]:
                 env = {"PUBLIC_BASE_URL": clean, "MERCHANT_NO": "DSM001", "API_SECRET": "demo-secret",
                        field: clean + suffix}
                 with patch.dict(os.environ, env, clear=True):

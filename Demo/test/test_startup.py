@@ -4,6 +4,7 @@ import json
 import hmac
 import hashlib
 import importlib.util
+import http.client
 import os
 import pty
 import shutil
@@ -123,8 +124,12 @@ class StartupTest(unittest.TestCase):
             self.fail("Create must redirect to checkoutUrl")
         self.assertEqual(len(self.orders), before + 1)
         order = self.orders[-1]
-        self.assertEqual(order["returnUrl"], public + "/payment/return?outOrderNo=STARTUP-TEST")
-        self.assertEqual(order["successRedirectUrl"], public + "/payment/success?outOrderNo=STARTUP-TEST")
+        if public is None:
+            self.assertNotIn("returnUrl", order)
+            self.assertNotIn("successRedirectUrl", order)
+        else:
+            self.assertEqual(order["returnUrl"], public + "/payment/return?outOrderNo=STARTUP-TEST")
+            self.assertEqual(order["successRedirectUrl"], public + "/payment/success?outOrderNo=STARTUP-TEST")
 
     def start_script(self, language, env, entered=None):
         path = self.demo / "backend" / language / "start.sh"
@@ -160,8 +165,8 @@ class StartupTest(unittest.TestCase):
         for language in LANGUAGES:
             with self.subTest(language=language):
                 env, port = self.environment()
-                # Retired configuration must have no effect.
-                env["PUBLIC_BASE_URL"] = "https://obsolete.example"
+                # Redirects use only the configured origin, irrespective of request headers.
+                env["PUBLIC_BASE_URL"] = "https://merchant.example"
                 try:
                     result = self.start_script(language, env)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -170,16 +175,11 @@ class StartupTest(unittest.TestCase):
                     self.assertIn("Merchant Portal callback URL: <your public URL>/notify", result.stdout)
                     self.assertNotIn("Demo access URL", result.stdout + result.stderr)
                     self.assertNotIn("demo-secret", result.stdout + result.stderr)
-                    self.assert_order_urls(port, "http://127.0.0.1:" + str(port))
-                    self.assert_order_urls(port, "https://example.ngrok-free.dev",
-                                           {"Host": "example.ngrok-free.dev", "X-Forwarded-Proto": "https"})
-                    self.assert_order_urls(port, "https://proxy.example",
-                                           {"X-Forwarded-Host": "proxy.example", "X-Forwarded-Proto": "https"})
-                    before = len(self.orders)
-                    with self.assertRaises(HTTPError) as caught:
-                        self.opener.open(Request("http://127.0.0.1:" + str(port) + "/create?payAmount=0.01", headers={"X-Forwarded-Proto": "https,http"}), timeout=5)
-                    caught.exception.close()
-                    self.assertEqual(len(self.orders), before)
+                    self.assert_order_urls(port, "https://merchant.example")
+                    self.assert_order_urls(port, "https://merchant.example",
+                                           {"Host": "attacker.example", "X-Forwarded-Proto": "https"})
+                    self.assert_order_urls(port, "https://merchant.example",
+                                           {"X-Forwarded-Host": "attacker.example", "X-Forwarded-Proto": "https,http"})
                     base = "http://127.0.0.1:" + str(port)
                     for number in ("QUERY-TEST", "FAIL", "BLOCKED"):
                         try:
@@ -229,7 +229,9 @@ class StartupTest(unittest.TestCase):
 
     def test_02_explicit_invalid_configuration_is_not_defaulted(self):
         for language in LANGUAGES:
-            for field, value in [("PORT", ""), ("PORT", "65536")]:
+            for field, value in [("PORT", ""), ("PORT", "65536"), ("API_SECRET", ""), ("MERCHANT_NO", ""),
+                                 ("PUBLIC_BASE_URL", ""), ("PUBLIC_BASE_URL", "https://merchant.example/"),
+                                 ("PUBLIC_BASE_URL", " https://merchant.example"), ("PUBLIC_BASE_URL", "https://user:pass@merchant.example")]:
                 with self.subTest(language=language, field=field, value=repr(value)):
                     env, _ = self.environment()
                     env[field] = value
@@ -265,7 +267,7 @@ class StartupTest(unittest.TestCase):
                             if process.poll() is not None or time.monotonic() > deadline:
                                 self.fail("Direct server did not start: " + language)
                             time.sleep(0.05)
-                    self.assert_order_urls(port, "http://127.0.0.1:" + str(port))
+                    self.assert_order_urls(port, None, {"Host": "attacker.example", "X-Forwarded-Host": "attacker.example"})
                 finally:
                     process.terminate()
                     process.communicate(timeout=5)
@@ -343,10 +345,16 @@ class StartupTest(unittest.TestCase):
                         self.assertEqual(request('/notify', raw.encode(), signature)[0], 401, language + ': ' + raw[:100])
                     self.assertEqual(request('/notify', precision.encode(), '0'*64)[0], 401)
                     self.assertEqual(request('/notify', b'\xff', '0'*64)[0], 400)
-                    # More than 1 MiB is accepted when the complete signed callback is valid.
-                    large = json.dumps({'timestamp': int(time.time()*1000), 'padding': 'x'*(1024*1024+1)}, separators=(',', ':'))
-                    signature = reference.digest(reference.canonical_fields(reference.parse_json(large)), 'demo-secret')
-                    self.assertEqual(request('/notify', large.encode(), signature)[0], 200, language)
+                    # Exact byte boundary accepted; one extra byte rejected even with a valid signature.
+                    for size, expected in ((65536, 200), (65537, 413)):
+                        large = json.dumps({'timestamp': int(time.time()*1000), 'padding': ''}, separators=(',', ':'))
+                        large = large.replace('"padding":""', '"padding":"' + 'x'*(size-len(large.encode())) + '"')
+                        signature = reference.digest(reference.canonical_fields(reference.parse_json(large)), 'demo-secret')
+                        self.assertEqual(request('/notify', large.encode(), signature)[0], expected, language)
+                    # Public fallback secret must not verify under an explicitly configured merchant secret.
+                    forged = json.dumps({'timestamp': int(time.time()*1000), 'status': 'COMPLETED'})
+                    forged_signature = reference.digest(reference.canonical_fields(reference.parse_json(forged)), 'change-me')
+                    self.assertEqual(request('/notify', forged.encode(), forged_signature)[0], 401, language)
                     started_at = time.monotonic()
                     status, raw = request('/query?outOrderNo=SLOW')
                     elapsed = time.monotonic() - started_at
@@ -428,6 +436,50 @@ class StartupTest(unittest.TestCase):
                 self.assertIn('FRONT_END_DIR', started.stdout + started.stderr)
                 self.assertNotIn('Server started successfully', started.stdout)
                 self.assertFalse((demo / 'server.pid').exists())
+
+    def test_07_direct_configuration_requires_credentials(self):
+        for language in LANGUAGES:
+            demo = self.demo / 'backend' / language
+            command = {'java': ['java', '-cp', 'build', 'DspayMockMerchant'],
+                       'nodejs': ['node', 'src/server.js'],
+                       'php': ['php', '-r', 'require "config.php";'],
+                       'python': [sys.executable, '-B', 'src/server.py']}[language]
+            if language == 'java':
+                (demo / 'build').mkdir(exist_ok=True)
+                subprocess.run(['javac', '-d', 'build', 'src/DspayMockMerchant.java', 'src/DspayTransport.java'], cwd=demo, check=True)
+            for field in ('MERCHANT_NO', 'API_SECRET'):
+                for value in (None, ''):
+                    with self.subTest(language=language, field=field, value=value):
+                        env, _ = self.environment()
+                        if value is None: env.pop(field)
+                        else: env[field] = value
+                        result = subprocess.run(command, cwd=demo, env=env, capture_output=True, text=True, timeout=5)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn(field, result.stdout + result.stderr)
+                        self.assertNotIn('demo-secret', result.stdout + result.stderr)
+
+    def test_08_streamed_callback_limit_and_same_origin(self):
+        # These two runtimes accept chunked bodies: the limit must not rely on Content-Length.
+        for language in ('nodejs', 'java'):
+            env, port = self.environment()
+            try:
+                started = self.start_script(language, env)
+                self.assertEqual(started.returncode, 0, started.stdout + started.stderr)
+                connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+                try:
+                    connection.request('POST', '/notify', body=iter([b'x'*4096]*17), encode_chunked=True)
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 413)
+                    self.assertEqual(json.loads(response.read())['code'], 'FAIL')
+                finally:
+                    connection.close()
+                with self.assertRaises(HTTPError) as caught:
+                    self.opener.open(Request('http://127.0.0.1:' + str(port) + '/query', headers={'Origin': 'https://attacker.example'}), timeout=5)
+                with caught.exception as response:
+                    self.assertEqual(response.code, 400)
+                    self.assertIsNone(response.headers.get('Access-Control-Allow-Origin'))
+            finally:
+                self.stop_script(language)
 
 
 if __name__ == "__main__":

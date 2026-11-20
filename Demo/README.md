@@ -51,13 +51,13 @@ All four demos default to `https://pay-api.ds.pro`; startup scripts do not promp
 
 ## Simple Startup (All Four Demos)
 
-Startup requires only the merchant number and API secret; no access URL configuration is needed. The default port is `3000`; use `PORT=4000 ./start.sh` to change it. Payment return links use the origin of the create-order request. When using ngrok/nginx, open the public URL to create orders. Register `<public URL>/notify` separately in the Merchant Portal for real webhooks.
+Startup requires only the merchant number and API secret; no access URL configuration is needed. The default port is `3000`; use `PORT=4000 ./start.sh` to change it. Payment return links are omitted by default. To enable them, optionally set `PUBLIC_BASE_URL` before startup to a trusted origin such as `https://shop.example.com` (no trailing slash or path). Return links use only this setting, never `Host` or `X-Forwarded-*`. Register `<public URL>/notify` separately in the Merchant Portal for real webhooks.
 
-For ngrok, run `ngrok http 3000` (match the Demo port). For nginx, proxy to `http://127.0.0.1:3000` and set `proxy_set_header Host $http_host;`, `proxy_set_header X-Forwarded-Proto $scheme;`, and `proxy_set_header X-Forwarded-Host $http_host;` to replace client-supplied forwarded hosts. The Demo trusts proxy headers only from loopback peers. Supply one correct host and protocol, not comma-separated lists, and access the public service through that proxy.
+For ngrok, run `ngrok http 3000` (match the Demo port). Nginx can proxy to `http://127.0.0.1:3000`. Configure `PUBLIC_BASE_URL` explicitly for payment return links; proxy headers are not used to derive them. See the security deployment guidance for access restrictions.
 
 Successful startup shows the listening port, local page, webhook URL format, and public forwarding steps.
 
-Payment return links use the URL of the create-order request. Real webhook delivery requires a public URL registered separately in the Merchant Portal; localhost cannot receive callbacks from DSPay.
+Payment return links are generated only when `PUBLIC_BASE_URL` is configured. Real webhook delivery requires a public URL registered separately in the Merchant Portal; localhost cannot receive callbacks from DSPay.
 
 Maintainers with all four runtimes installed can run the cross-language startup checks from the repository root:
 
@@ -76,7 +76,7 @@ export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 npm start        # equivalent to: node src/server.js
 ```
 
-Every backend version also serves the store page itself: after `./start.sh`, open `http://localhost:3000` (or the public URL) and click Pay Now — page and API share the same origin, no extra static hosting needed. Opening `Demo/frontend/index.html` directly from disk also works locally (it falls back to `http://localhost:3000`). Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal. `FRONT_END_DIR` optionally points the backend at a different frontend directory (default: `../../frontend`).
+Every backend version also serves the store page itself: after `./start.sh`, open `http://localhost:3000` (or the public URL) and click Pay Now — page and API share the same origin, no extra static hosting needed. Use the HTTP page served by the backend instead of opening the HTML file directly; Node no longer enables wildcard CORS. Expose port 3000 through ngrok or similar when testing webhooks, then configure that public `/notify` URL in the merchant portal. `FRONT_END_DIR` optionally points the backend at a different frontend directory (default: `../../frontend`).
 
 The front end displays an editable Order ID (`outOrderNo`). The refresh button generates a new ID each time; Pay Now submits the displayed ID. Use a new ID for each new order. Reuse the original ID and identical business fields only when retrying the same order. The backend uses the supplied value, or generates one when none is supplied.
 
@@ -139,6 +139,10 @@ Check both HTTP status and DSPay business codes. Verification or redirects do no
 
 `/create` requires `payAmount`, at least `0.01`, with at most 12 integer and 2 fractional digits. Missing `outOrderNo` generates a fresh ID; explicit empty or invalid values are rejected. Optional `productPrice` allows 14 integer and 6 fractional digits and uses USD; `productId` allows 64 characters. Missing optional product fields are not replaced by defaults. Unknown/repeated parameters, invalid identifiers, leading zeros, scientific notation, and amount whitespace return HTTP 400. Valid strings remain unchanged; optional empty-field signing exclusions follow the SDK contract.
 
-Callbacks preserve large JSON integers and decimal precision and reject duplicate object keys. `timestamp` must be a nonnegative integer in milliseconds within an inclusive ±5-minute window. Invalid signatures or timestamps return HTTP 401. The Demo imposes no extra fixed callback-body size cap.
+Callbacks preserve large JSON integers and decimal precision and reject duplicate object keys. `timestamp` must be a nonnegative integer in milliseconds within an inclusive ±5-minute window. Invalid signatures or timestamps return HTTP 401. Callback bodies are limited to 64 KiB; oversized bodies receive HTTP 413.
 
 Upstream requests explicitly use 10-second timeouts and refuse redirects. Success requires a top-level integer `code` equal to `0` and a `data` field; HTTP 200 or `header.resultCode` alone is insufficient. HTTP failures, nonzero business codes, malformed responses, and timeouts return HTTP 502 with diagnostic logs. HTTP libraries, default proxy behavior, and TLS characteristics remain runtime-specific.
+
+## Security configuration and deployment
+
+Merchant credentials must be supplied explicitly; there are no fallback values. Missing credentials prevent execution. `PUBLIC_BASE_URL` is optional: when absent, return links are omitted and the payer stays on the checkout page. An explicit empty or invalid value is rejected. Callback bodies are limited to 64 KiB. Create/query endpoints remain demonstration endpoints; merchants must implement production authorization and order ownership checks. See [security deployment guidance](SECURITY-DEPLOYMENT.md).
