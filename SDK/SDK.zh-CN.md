@@ -81,7 +81,7 @@
 
 ### Step 2：服务端预创建订单
 
-填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。DSPay API 地址已预填为正式环境地址。
+填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用推荐调试基线 Node.js `22.23.4` 运行。DSPay API 地址已预填为正式环境地址。
 
 > 执行前必须将下面的 `MERCHANT_NO` 和 `API_SECRET` 替换为 DSPay 商户后台中的真实参数值。`DSPAY_BASE_URL` 已预填为 DSPay 正式 API 地址，仅测试其他环境时修改。
 
@@ -205,7 +205,7 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 | Python Demo | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1`（推荐 3.12+，首选 3.14） | 仅标准库，无 pip 依赖 |
 | 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
 
-> 统一调试基线为 Node.js `22.23.4`（Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`）；表中任意已验证版本均可使用。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动。PHP 8.1 以下不支持接入：PHP ≤ 7.4 的老 OpenSSL 构建会被网关 WAF 拦截。
+> 统一调试基线为 Node.js `22.23.4`（Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`）；表中任意已验证版本均可使用。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动。PHP 8.1 为接入基线；PHP 7.4 仅保留特定构建的兼容验证记录，不推荐生产使用。
 
 ### 1.5 核心接入速查表
 

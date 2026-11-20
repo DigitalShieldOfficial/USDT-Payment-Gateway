@@ -16,7 +16,7 @@ Runtime baseline: Node.js `>=18.20.8` (declared in `package.json`; `.nvmrc` pins
 | 24.22.2 | 11.19.1 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | ⭐ Yes — LTS |
 | 26.13.0 | 11.20.0 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | — (newest, released recently) |
 
-Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. Node ships its own TLS stack (BoringSSL-derived), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `node -v`.
+Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>?x-digitalshield-temp-token=<token>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. Node ships its own TLS stack (BoringSSL-derived), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `node -v`.
 
 The API address defaults to `https://pay-api.ds.pro` for both script and direct startup, so it is not prompted. Set `DSPAY_BASE_URL` explicitly only to test another environment. API addresses must be complete HTTP(S) origins without a trailing slash, path, query, credentials, or whitespace; invalid explicit values are rejected rather than repaired.
 

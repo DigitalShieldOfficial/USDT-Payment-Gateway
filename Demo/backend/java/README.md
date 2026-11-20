@@ -16,7 +16,7 @@ Runtime baseline: JDK 8+ — no Maven or Gradle required; the source uses only t
 | 21 (`21.0.11`) | Eclipse Temurin | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — current enterprise default |
 | 25 (`25.0.5.0.3`) | Eclipse Temurin (Homebrew) | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — latest LTS |
 
-Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. The JDK ships its own TLS stack (JSSE), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `java -version`.
+Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>?x-digitalshield-temp-token=<token>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. The JDK ships its own TLS stack (JSSE), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `java -version`.
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
 

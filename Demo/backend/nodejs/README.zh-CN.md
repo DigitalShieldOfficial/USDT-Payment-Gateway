@@ -16,7 +16,7 @@
 | 24.22.2 | 11.19.1 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — LTS |
 | 26.13.0 | 11.20.0 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | —（最新版，发布时间较近） |
 
-每行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>`。已验证各线均持续支持；"—" 表示仍支持但不是新接入的首选。Node 自带 TLS 栈（BoringSSL 系），宿主机 OpenSSL 版本不影响连通性。商户执行 `node -v` 对照即可。
+每行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>?x-digitalshield-temp-token=<令牌>`。已验证各线均持续支持；"—" 表示仍支持但不是新接入的首选。Node 自带 TLS 栈（BoringSSL 系），宿主机 OpenSSL 版本不影响连通性。商户执行 `node -v` 对照即可。
 
 脚本和直接启动均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。API 地址必须是完整的 HTTP(S) 源地址，不允许尾部斜杠、路径、查询参数、用户名密码或空白；显式非法值会报错，不静默修正。
 

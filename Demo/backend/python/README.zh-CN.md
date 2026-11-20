@@ -19,7 +19,7 @@ Python 3.10+，零第三方依赖。服务端签名调用 `POST /dspay/public/or
 | 3.14.3 | 系统 python3 | macOS arm64 | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — 首选，当前推荐版本 |
 | 3.15.1 | pyenv（源码编译） | macOS arm64 | ✅ 下单成功，302 跳转收银台 | —（最新版，2026-10 发布） |
 
-每行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>`。已验证各线均持续支持；"—" 表示仍支持但不是新接入的首选。标准库 `ssl` 模块跟随解释器链接的 OpenSSL，实测各代构建（OpenSSL 1.1.1 / 3.x / 4.x 时期）全部通过，OpenSSL 版本对 Python 不是兼容性因素。商户执行 `python3 -V` 对照即可。
+每行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>?x-digitalshield-temp-token=<令牌>`。已验证各线均持续支持；"—" 表示仍支持但不是新接入的首选。标准库 `ssl` 模块跟随解释器链接的 OpenSSL，实测各代构建（OpenSSL 1.1.1 / 3.x / 4.x 时期）全部通过，OpenSSL 版本对 Python 不是兼容性因素。商户执行 `python3 -V` 对照即可。
 
 启动只需商户号和 API 密钥，不需要配置访问域名。默认监听 `3000`，可用 `PORT=4000 ./start.sh` 更换端口。默认不发送支付返回链接；需要返回商户页面时，启动前设置可选的 `PUBLIC_BASE_URL` 为可信访问源地址，例如 `https://shop.example.com`（无尾部斜杠和路径）。返回链接只使用此配置，不读取 `Host` 或 `X-Forwarded-*`。真实回调地址为 `<公网地址>/notify`，仍需在商户后台单独登记。
 

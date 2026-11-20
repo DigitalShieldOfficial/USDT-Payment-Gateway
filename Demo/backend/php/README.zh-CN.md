@@ -2,6 +2,8 @@
 
 # DSPay PHP 模拟商户
 
+生产推荐 PHP 8.4／8.5 的最新补丁版本；接入基线与历史测试通过不代表运行时仍受官方安全维护。PHP 8.1 及更早版本仅作兼容记录，不推荐生产。
+
 PHP 8.1+，无需 Composer。服务端调用 DSPay 创建和查询接口，并使用创建响应中的 `checkoutUrl` 跳转收银台。
 
 版本基线：PHP 8.1+，零第三方依赖——无需 Composer，只使用 PHP 标准扩展。已验证版本及 PHP 7.4 的环境限制见下表。
@@ -14,12 +16,12 @@ PHP 8.1+，无需 Composer。服务端调用 DSPay 创建和查询接口，并�
 | 8.4.27 | OpenSSL 3.x | Docker `php:8.4-cli`（Debian bookworm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
 | 8.3.6 | OpenSSL 3.6.3 | 自编译，macOS arm64 | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
 | 8.2.35 | OpenSSL 3.x | Docker `php:8.2-cli`（Debian bookworm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
-| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli`（Debian bullseye） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — 最低推荐版本 |
+| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli`（Debian bullseye） | ✅ 下单成功，302 跳转收银台 | 仅兼容验证；已停止官方安全维护，不推荐生产 |
 | 7.4.33 | OpenSSL 4.0.3 | Homebrew shivammathur/php 安装包 | ✅ 下单成功，302 跳转收银台 | 仅限 OpenSSL 4 构建 |
 | 7.4.33 | OpenSSL 3.0.20 | sury bookworm 镜像 | ⚠️ 被网关 WAF 拦截（HTTP 403） | ❌ 不推荐 — 老 TLS 指纹被拦 |
 | 7.4.33 | OpenSSL 1.1.1n | Docker `php:7.4-cli`（Debian bullseye） | ⚠️ 被网关 WAF 拦截（HTTP 403） | ❌ 不推荐 — 老 TLS 指纹被拦 |
 
-每个 ✅ 行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>`。
+每个 ✅ 行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>?x-digitalshield-temp-token=<令牌>`。
 
 **对照你的环境。** PHP **8.1+** 对 OpenSSL 版本不敏感（1.1.1 / 3.x / 4.x 均实测通过），执行 `php -v` 对照即可。唯一敏感的是 PHP **7.4**：链接 OpenSSL 4 的构建（如 2026-10 后的 Homebrew `shivammathur/php` 安装包）可以正常下单；链接老版 OpenSSL（1.1.1 / 3.0，即各发行版软件源与官方 Docker 镜像）的构建会被网关 WAF 挑战，报 `DSPay HTTP 403; CF-Ray: ...`。demo 代码本身在 7.4 上无缺陷（已经本地 mock 全流程验证）。自查命令：
 

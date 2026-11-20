@@ -2,6 +2,8 @@
 
 # DSPay PHP Mock Merchant
 
+For production, use the latest patched PHP 8.4/8.5. An integration baseline or historical test pass does not imply ongoing official security support. PHP 8.1 and earlier are compatibility records only, not production recommendations.
+
 PHP 8.1+, no Composer. The backend calls the DSPay create/query APIs and redirects to the `checkoutUrl` returned by the create response.
 
 Runtime baseline: PHP 8.1+, zero third-party dependencies — no Composer required; only standard PHP extensions are used. Verified versions and the PHP 7.4 environment caveat are listed in the table below.
@@ -14,12 +16,12 @@ Runtime baseline: PHP 8.1+, zero third-party dependencies — no Composer requir
 | 8.4.27 | OpenSSL 3.x | Docker `php:8.4-cli` (Debian bookworm) | ✅ order created, 302 → cashier | ⭐ Yes |
 | 8.3.6 | OpenSSL 3.6.3 | self-built, macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes |
 | 8.2.35 | OpenSSL 3.x | Docker `php:8.2-cli` (Debian bookworm) | ✅ order created, 302 → cashier | ⭐ Yes |
-| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli` (Debian bullseye) | ✅ order created, 302 → cashier | ⭐ Yes — minimum recommended |
+| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli` (Debian bullseye) | ✅ order created, 302 → cashier | Compatibility only; end-of-life, not recommended for production |
 | 7.4.33 | OpenSSL 4.0.3 | Homebrew shivammathur/php bottle | ✅ order created, 302 → cashier | Only with an OpenSSL 4 build |
 | 7.4.33 | OpenSSL 3.0.20 | sury bookworm image | ⚠️ blocked by the gateway WAF (HTTP 403) | ❌ No — blocked by old TLS fingerprint |
 | 7.4.33 | OpenSSL 1.1.1n | Docker `php:7.4-cli` (Debian bullseye) | ⚠️ blocked by the gateway WAF (HTTP 403) | ❌ No — blocked by old TLS fingerprint |
 
-Every ✅ row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`.
+Every ✅ row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>?x-digitalshield-temp-token=<token>`.
 
 **What this means for your environment.** PHP **8.1+** works on any modern OpenSSL (1.1.1 / 3.x / 4.x — all tested) — just check `php -v`. PHP **7.4** is the only version sensitive to the linked OpenSSL: builds with OpenSSL 4 (e.g. Homebrew `shivammathur/php` bottles since 2026-10) pass, while older builds (OpenSSL 1.1.1 / 3.0, i.e. distro packages and the official Docker image) are challenged by the gateway WAF with `DSPay HTTP 403; CF-Ray: ...`. The demo code itself has no defects on 7.4 (verified against a local mock). Check your build with:
 

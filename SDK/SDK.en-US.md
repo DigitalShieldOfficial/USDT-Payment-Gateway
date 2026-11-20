@@ -75,7 +75,7 @@
 
 ### Step 1 — Build and sign the request on your server
 
-The following example uses the unified Node.js `18.20.8` baseline and only required fields. Absent or `null` optional fields are omitted from the canonical string.
+The following example uses the recommended Node.js `22.23.4` debugging baseline and only required fields. Absent or `null` optional fields are omitted from the canonical string.
 
 > Before running it, replace `merchantNo` and `apiSecret` below with real values from the DSPay Merchant Portal. `baseUrl` is prefilled with the DSPay production API; change it only when testing another environment.
 
@@ -185,7 +185,7 @@ The following versions were verified end to end against the production DSPay API
 | Python Demo | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1` (3.12+ recommended, 3.14 preferred) | Standard library only; no pip dependencies |
 | Frontend Demo | A modern browser supporting `URL`, `sessionStorage`, and `crypto.randomUUID()` | Google Chrome `151.0.7922.175` | One HTML file; no framework or build tool |
 
-> The unified debugging baseline is Node.js `22.23.4` (`.nvmrc` in the Node.js Demo; run `nvm use` in that directory); any verified version above works. Validation environments include macOS `15.1` and Docker Linux. The Java Demo compiles with `javac -d build src/DspayMockMerchant.java` and runs with `java -cp build DspayMockMerchant` (create `build/` first). PHP below 8.1 is not supported for integration: older-OpenSSL builds of PHP ≤ 7.4 are challenged by the gateway WAF.
+> The unified debugging baseline is Node.js `22.23.4` (`.nvmrc` in the Node.js Demo; run `nvm use` in that directory); any verified version above works. Validation environments include macOS `15.1` and Docker Linux. The Java Demo compiles with `javac -d build src/DspayMockMerchant.java` and runs with `java -cp build DspayMockMerchant` (create `build/` first). PHP 8.1 is the integration baseline; PHP 7.4 results document specific legacy builds only and are not production recommendations.
 
 ### 1.5 Core Integration Cheat Sheet
 
