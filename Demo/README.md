@@ -146,3 +146,5 @@ Upstream requests explicitly use 10-second timeouts and refuse redirects. Succes
 ## Security configuration and deployment
 
 Merchant credentials must be supplied explicitly; there are no fallback values. Missing credentials prevent execution. `PUBLIC_BASE_URL` is optional: when absent, return links are omitted and the payer stays on the checkout page. An explicit empty or invalid value is rejected. Callback bodies are limited to 64 KiB. Create/query endpoints remain demonstration endpoints; merchants must implement production authorization and order ownership checks. See [security deployment guidance](SECURITY-DEPLOYMENT.md).
+
+Integration note: save the payment Key (`apiSecret`) when created or rotated; it is disclosed only once. Redirect to the complete returned `checkoutUrl`, preserving its `x-digitalshield-temp-token` query parameter. Webhooks are optional at API level; enable them in production with signed queries as fallback.

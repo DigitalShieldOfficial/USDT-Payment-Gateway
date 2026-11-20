@@ -179,3 +179,5 @@ python3 -B src/server.py
 ## 安全配置与部署
 
 商户号和 apiSecret 必须显式提供，没有兜底值；缺少配置时拒绝运行。`PUBLIC_BASE_URL` 为可选环境变量，未配置时省略支付返回链接，支付后停留收银台；显式空值或非法值会报错。回调请求体上限为 64 KiB。创建、查询接口保持演示用途，生产权限和订单归属需由商户实现。详见[安全部署说明](SECURITY-DEPLOYMENT.zh-CN.md)。
+
+接入说明：支付 Key（`apiSecret`）仅在创建或轮换时完整展示一次，请立即保存。原样跳转创建接口返回的完整 `checkoutUrl`，保留 `x-digitalshield-temp-token` 查询参数。回调在接口能力上可选，生产建议启用并以主动查询兜底。

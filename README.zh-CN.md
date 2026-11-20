@@ -119,3 +119,5 @@ Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 8+、PHP 5.6+、Pytho
 | X 官方账号 | https://x.com/DigitShield_HQ |
 | X 中文账号 | https://x.com/DigitShield_ZH |
 | 电子邮箱 | service@ds.pro |
+
+接入说明：支付 Key（`apiSecret`）仅在创建或轮换时完整展示一次，请立即保存。原样跳转创建接口返回的完整 `checkoutUrl`，保留 `x-digitalshield-temp-token` 查询参数。回调在接口能力上可选，生产建议启用并以主动查询兜底。
