@@ -10,13 +10,13 @@ This demo implements the merchant integration flow: the browser calls the mercha
 
 | Demo | Minimum | Tested versions | Dependencies |
 |------|---------|-----------------|--------------|
-| Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; `.nvmrc` included |
-| Java | JDK 8 | Verified on Corretto `1.8.0_504`, Microsoft OpenJDK `11.0.27`, and Temurin `17.0.21` / `21.0.11` | No Maven/Gradle dependencies |
-| PHP | PHP 5.6 | PHP CLI `5.6.40` and `8.5.10` | No Composer dependency |
-| Python | Python 3.10 | Python `3.12.14` and `3.14.3` | Standard library only; no pip dependencies |
+| Node.js | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0` (22 / 24 LTS recommended) | No npm dependencies; `.nvmrc` included |
+| Java | JDK 8 | `8` (Corretto) / `11` / `17` / `21` / `25` (21 / 25 LTS recommended) | No Maven/Gradle dependencies |
+| PHP | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`; `7.4.33` only with OpenSSL 4 builds (older-OpenSSL 7.4 is blocked by the gateway WAF) | No Composer dependency |
+| Python | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1` (3.12+ recommended, 3.14 preferred) | Standard library only; no pip dependencies |
 | Frontend | A modern browser with `crypto.randomUUID()` | Chrome `151.0.7922.175` | One HTML file; no build step |
 
-Historical validation for the existing demos includes macOS `15.1` and Docker Linux. Python tests were run locally on the two versions listed above. “Minimum” is the source compatibility baseline; “Tested versions” lists runtimes actually used to execute repository tests.
+All backend rows were verified end to-end against the production DSPay API (start → storefront → Pay Now → 302 redirect to `cashier.ds.pro`), twice per version; historical validation also includes macOS `15.1` and Docker Linux. “Minimum” is the supported baseline; “Tested versions” lists runtimes actually used to execute repository tests. Each language guide has a per-version table with distributions, OpenSSL, and recommendations.
 
 Check local versions before running a demo:
 

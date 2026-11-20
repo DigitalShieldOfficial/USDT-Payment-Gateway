@@ -190,22 +190,22 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 - **[EVM](#term-evm) 钱包**：用于 [SIWE](#term-siwe) 登录（MetaMask / Rabby / Trust 等均可，只需能 `personal_sign`）
 - **公网可达的回调 URL**：用于接收 [DSPay](#term-dspay) 异步通知（本地开发可用 ngrok / cpolar）
 - **[NTP](#term-ntp) 时钟同步**：签名验证有 ±5 分钟时间窗口，服务器时钟必须准确
-- **JDK 8+、Node.js 18.20.8、PHP 5.6+ 或 Python 3.10+**：运行对应语言 Demo（其他语言可按规范自行实现）
+- **JDK 8+、Node.js >=18.20.8（推荐 22 / 24 LTS）、PHP 8.1+（PHP 7.4 仅限 OpenSSL 4 构建）或 Python 3.10+（推荐 3.12+）**：运行对应语言 Demo（其他语言可按规范自行实现）
 - **测试用稳定币**：每条用于联调的主网钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 原始金额及订单识别尾数；链上 Gas 代币需另行准备
 
 #### Demo 运行时版本
 
-以下版本已实际执行对应测试。复制示例时建议优先使用表中的已验证版本；“最低版本”表示源码使用的最低语言/API基线。
+以下版本均按端到端流程（启动 → 商店页 → Pay Now → 302 跳转 `cashier.ds.pro`）对生产 DSPay API 实测，每版本两轮。复制示例时建议优先使用表中推荐版本；“最低版本”表示受支持的基线。
 
 | Demo | 最低版本 | 已验证版本 | 外部依赖 |
 |------|----------|------------|----------|
-| 文档内 Node.js 示例、Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 无 npm 依赖，仅使用 Node.js 内置模块 |
-| Java Demo、Java 验签示例 | JDK 8 | Amazon Corretto `1.8.0_504`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
-| PHP Demo | PHP 5.6 | PHP `5.6.40`、`8.5.10` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
-| Python Demo | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
+| 文档内 Node.js 示例、Node.js Demo | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0`（推荐 22 / 24 LTS） | 无 npm 依赖，仅使用 Node.js 内置模块 |
+| Java Demo、Java 验签示例 | JDK 8 | `8`（Corretto）/ `11` / `17` / `21` / `25`（推荐 21 / 25 LTS） | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
+| PHP Demo | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`；`7.4.33` 仅限 OpenSSL 4 构建（老 OpenSSL 的 7.4 会被网关 WAF 拦截） | 无 Composer 依赖，仅使用 PHP 标准扩展 |
+| Python Demo | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1`（推荐 3.12+，首选 3.14） | 仅标准库，无 pip 依赖 |
 | 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
 
-> Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。
+> 统一调试基线为 Node.js `22.23.4`（Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`）；表中任意已验证版本均可使用。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动。PHP 8.1 以下不支持接入：PHP ≤ 7.4 的老 OpenSSL 构建会被网关 WAF 拦截。
 
 ### 1.5 核心接入速查表
 

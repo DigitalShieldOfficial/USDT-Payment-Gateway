@@ -12,9 +12,9 @@
 Demo/
 ├── frontend/index.html
 └── backend/
-    ├── nodejs/   Node.js 18.20.8，零 npm 依赖
+    ├── nodejs/   Node.js >=18.20.8，零 npm 依赖
     ├── java/     JDK 8+，零外部依赖
-    ├── php/      PHP 5.6+，无需 Composer
+    ├── php/      PHP 8.1+，无需 Composer
     └── python/   Python 3.10+，仅标准库
 ```
 
@@ -22,13 +22,13 @@ Demo/
 
 | Demo | 最低版本 | 已验证版本 | 依赖说明 |
 |------|----------|------------|----------|
-| Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 零 npm 依赖；提供 `.nvmrc` |
-| Java | JDK 8 | 已在 Corretto `1.8.0_504`、Microsoft OpenJDK `11.0.27` 与 Temurin `17.0.21` / `21.0.11` 验证 | 零 Maven/Gradle 依赖 |
-| PHP | PHP 5.6 | PHP CLI `5.6.40`、`8.5.10` | 无需 Composer |
-| Python | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
+| Node.js | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0`（推荐 22 / 24 LTS） | 零 npm 依赖；提供 `.nvmrc` |
+| Java | JDK 8 | `8`（Corretto）/ `11` / `17` / `21` / `25`（推荐 21 / 25 LTS） | 零 Maven/Gradle 依赖 |
+| PHP | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`；`7.4.33` 仅限 OpenSSL 4 构建（老 OpenSSL 的 7.4 会被网关 WAF 拦截） | 无需 Composer |
+| Python | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1`（推荐 3.12+，首选 3.14） | 仅标准库，无 pip 依赖 |
 | 前端 | 支持 `crypto.randomUUID()` 的现代浏览器 | Chrome `151.0.7922.175` | 单文件 HTML，无构建步骤 |
 
-现有 Demo 的历史验证环境包括 macOS `15.1`、Docker Linux；Python 本次在本机使用表中两个版本执行测试。最低版本和已验证版本含义不同：最低版本是源码兼容基线，已验证版本是仓库测试实际运行过的版本。
+所有后端行均按端到端流程（启动 → 商店页 → Pay Now → 302 跳转 `cashier.ds.pro`）对生产 DSPay API 实测，每版本两轮；历史验证环境还包括 macOS `15.1`、Docker Linux。最低版本是支持基线，已验证版本是仓库测试实际运行过的版本；各语言指南内有含发行版、OpenSSL 与推荐标记的逐版本明细表。
 
 运行前可先确认本机版本：
 

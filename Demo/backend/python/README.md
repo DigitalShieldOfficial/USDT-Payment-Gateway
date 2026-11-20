@@ -6,7 +6,20 @@ Python 3.10+, zero third-party dependencies. The backend signs and calls `POST /
 
 ## Runtime
 
-Use `python3`; no pip install, virtual environment, or framework is required. Local tests are verified on Python `3.12.14` and `3.14.3`.
+Use `python3`; no pip install, virtual environment, or framework is required. Verified versions are listed in the table below.
+
+### Verified environments (end-to-end against the production DSPay API)
+
+| Python version | Installation | Platform | Result | Recommended |
+|---|---|---|---|---|
+| 3.10.16 | pyenv (source build) | macOS arm64 | ✅ order created, 302 → cashier | — (EOL since 2026-10) |
+| 3.11.13 | pyenv (source build) | macOS arm64 | ✅ order created, 302 → cashier | — |
+| 3.12.3 | pyenv (source build) | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — production workhorse |
+| 3.13.6 | pyenv (source build) | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes |
+| 3.14.3 | system python3 | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — preferred, current recommended release |
+| 3.15.1 | pyenv (source build) | macOS arm64 | ✅ order created, 302 → cashier | — (newest, released 2026-10) |
+
+Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. The standard-library `ssl` module tracks the interpreter's linked OpenSSL, and all tested builds (OpenSSL 1.1.1 / 3.x / 4.x eras) passed, so the OpenSSL version is not a compatibility factor for Python. Compare with your environment via `python3 -V`.
 
 Startup requires only the merchant number and API secret; no access URL configuration is needed. The default port is `3000`; use `PORT=4000 ./start.sh` to change it. Payment return links are omitted by default. To enable them, optionally set `PUBLIC_BASE_URL` before startup to a trusted origin such as `https://shop.example.com` (no trailing slash or path). Return links use only this setting, never `Host` or `X-Forwarded-*`. Register `<public URL>/notify` separately in the Merchant Portal for real webhooks.
 

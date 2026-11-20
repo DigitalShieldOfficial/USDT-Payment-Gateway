@@ -19,7 +19,7 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 if ! command -v php >/dev/null 2>&1; then
-    echo "PHP CLI not found. Install PHP 7.4 or newer (php-cli) before starting." >&2
+    echo "PHP CLI not found. Install PHP 8.1 or newer (php-cli) before starting." >&2
     exit 1
 fi
 

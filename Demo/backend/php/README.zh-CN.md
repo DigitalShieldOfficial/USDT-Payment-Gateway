@@ -2,13 +2,36 @@
 
 # DSPay PHP 模拟商户
 
-PHP 5.6+，无需 Composer。服务端调用 DSPay 创建和查询接口，并使用创建响应中的 `checkoutUrl` 跳转收银台。
+PHP 8.1+，无需 Composer。服务端调用 DSPay 创建和查询接口，并使用创建响应中的 `checkoutUrl` 跳转收银台。
 
-版本基线：最低 PHP 5.6；已在 PHP CLI `5.6.40` 和 `8.5.10` 执行全部语法检查、创建签名测试和回调验签测试。无需 Composer，只使用 PHP 标准扩展；`hash_equals()` 要求 PHP 5.6+。
+版本基线：PHP 8.1+，零第三方依赖——无需 Composer，只使用 PHP 标准扩展。已验证版本及 PHP 7.4 的环境限制见下表。
+
+## 已验证环境（对接生产 DSPay API 的端到端实测）
+
+| PHP 版本 | OpenSSL | 环境 | 结果 | 推荐 |
+|---|---|---|---|---|
+| 8.5.10 | OpenSSL 3.x | Homebrew，macOS arm64 | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — 最新版 |
+| 8.4.27 | OpenSSL 3.x | Docker `php:8.4-cli`（Debian bookworm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
+| 8.3.6 | OpenSSL 3.6.3 | 自编译，macOS arm64 | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
+| 8.2.35 | OpenSSL 3.x | Docker `php:8.2-cli`（Debian bookworm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 |
+| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli`（Debian bullseye） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — 最低推荐版本 |
+| 7.4.33 | OpenSSL 4.0.3 | Homebrew shivammathur/php 安装包 | ✅ 下单成功，302 跳转收银台 | 仅限 OpenSSL 4 构建 |
+| 7.4.33 | OpenSSL 3.0.20 | sury bookworm 镜像 | ⚠️ 被网关 WAF 拦截（HTTP 403） | ❌ 不推荐 — 老 TLS 指纹被拦 |
+| 7.4.33 | OpenSSL 1.1.1n | Docker `php:7.4-cli`（Debian bullseye） | ⚠️ 被网关 WAF 拦截（HTTP 403） | ❌ 不推荐 — 老 TLS 指纹被拦 |
+
+每个 ✅ 行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>`。
+
+**对照你的环境。** PHP **8.1+** 对 OpenSSL 版本不敏感（1.1.1 / 3.x / 4.x 均实测通过），执行 `php -v` 对照即可。唯一敏感的是 PHP **7.4**：链接 OpenSSL 4 的构建（如 2026-10 后的 Homebrew `shivammathur/php` 安装包）可以正常下单；链接老版 OpenSSL（1.1.1 / 3.0，即各发行版软件源与官方 Docker 镜像）的构建会被网关 WAF 挑战，报 `DSPay HTTP 403; CF-Ray: ...`。demo 代码本身在 7.4 上无缺陷（已经本地 mock 全流程验证）。自查命令：
+
+```bash
+php -v && php -r 'echo OPENSSL_VERSION_TEXT, PHP_EOL;'
+```
+
+若你的环境是 PHP ≤ 7.4 且 OpenSSL 较老：建议升级到 PHP 8.1+；或将 `DSPAY_BASE_URL` 指向同机上任意新栈代理进程（PHP 8 / Python 3 均可）；被拦截时把报错中的 `CF-Ray` 提供给 DSPay 支持人员以便定位。
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换。API 地址默认使用 DSPay 正式环境；仅测试其他环境时覆盖。
 
-执行 `./start.sh` 后先输入缺少的 `MERCHANT_NO` 和 `API_SECRET`，再选择 Demo 访问地址；密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../frontend`）。输入值不会保存。服务在后台运行（PID 记录在 `server.pid`），执行 `./stop.sh` 停止。
+执行 `./start.sh` 并输入缺少的 `MERCHANT_NO` 和 `API_SECRET`；密钥输入不回显。`PORT` 可选，默认 `3000`；`FRONT_END_DIR` 可选，可指定其他前端目录（默认 `../../frontend`）。输入值不会保存。服务在后台运行（PID 记录在 `server.pid`），执行 `./stop.sh` 停止。
 
 脚本和直接启动均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。API 地址必须是完整的 HTTP(S) 源地址，不允许尾部斜杠、路径、查询参数、用户名密码或空白；显式非法值会报错，不静默修正。
 

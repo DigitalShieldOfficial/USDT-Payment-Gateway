@@ -104,7 +104,7 @@ DS-Pay 提供轻量化集成模式，有效降低开发工作量。完成基础�
 
 [查看更多演示](./Demo)
 
-Demo 版本基线：Node.js `18.20.8` + npm `10.8.2`、JDK 8+、PHP 5.6+、Python 3.10+；前端需要支持 `crypto.randomUUID()` 的现代浏览器。Node.js只需一个版本。实际验证版本和依赖说明见 [Demo 已验证运行环境](./Demo/README.zh-CN.md#已验证运行环境)。
+Demo 版本基线：Node.js `>=18.20.8`（推荐 22 / 24 LTS）、JDK 8+（推荐 21 / 25 LTS）、PHP 8.1+（PHP 7.4 仅限 OpenSSL 4 构建）、Python 3.10+（推荐 3.12+）；前端需要支持 `crypto.randomUUID()` 的现代浏览器。实际验证版本和依赖说明见 [Demo 已验证运行环境](./Demo/README.zh-CN.md#已验证运行环境)。
 
 
 ## 联系我们

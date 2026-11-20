@@ -4,7 +4,19 @@
 
 JDK 8+, zero external dependencies. It calls `POST /dspay/public/order/create`, redirects to the returned `checkoutUrl`, and verifies webhooks using the shared ASCII-sorted canonical field string.
 
-Runtime baseline: JDK 8 minimum; transport verified on Corretto `1.8.0_504`, Microsoft OpenJDK `11.0.27`, and Temurin `17.0.21` / `21.0.11`. Full startup and business regression checks cover JDK 8 and 21. Maven and Gradle are not required; the source uses only the JDK standard library. `./start.sh` compiles to `build/` and runs `java -cp build DspayMockMerchant` using the same JDK 8+ installation.
+Runtime baseline: JDK 8+ — no Maven or Gradle required; the source uses only the JDK standard library. `./start.sh` compiles to `build/` and runs `java -cp build DspayMockMerchant` using the same JDK 8+ installation. Verified versions are listed in the table below.
+
+## Verified environments (end-to-end against the production DSPay API)
+
+| Java version | Distribution | Platform | Result | Recommended |
+|---|---|---|---|---|
+| 8 (`1.8.0_504`) | Amazon Corretto | macOS arm64 | ✅ order created, 302 → cashier | — |
+| 11 (`11.0.27`) | Microsoft OpenJDK | macOS arm64 | ✅ order created, 302 → cashier | — |
+| 17 (`17.0.21.0.3`) | Eclipse Temurin (Homebrew) | macOS arm64 | ✅ order created, 302 → cashier | — |
+| 21 (`21.0.11`) | Eclipse Temurin | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — current enterprise default |
+| 25 (`25.0.5.0.3`) | Eclipse Temurin (Homebrew) | macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — latest LTS |
+
+Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. The JDK ships its own TLS stack (JSSE), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `java -version`.
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
 

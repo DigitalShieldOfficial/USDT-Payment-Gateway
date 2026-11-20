@@ -2,9 +2,21 @@
 
 # Node.js Mock Merchant
 
-统一使用 Node.js `18.20.8` + npm `10.8.2`，零 npm 依赖。该服务真实调用 `POST /dspay/public/order/create` 和 `/query`，并使用响应中的 `checkoutUrl` 跳转收银台。
+该服务真实调用 `POST /dspay/public/order/create` 和 `/query`，并使用响应中的 `checkoutUrl` 跳转收银台。
 
-版本基线和已验证版本均为 Node.js `18.20.8` + npm `10.8.2`。仓库提供 `.nvmrc`，`package.json` 声明 `node >=18.20.8`，不需要多个Node版本，也没有第三方npm包。
+版本基线：Node.js `>=18.20.8`（`package.json` 声明；`.nvmrc` 固定开发版本），零第三方 npm 包。已验证版本见下表。
+
+## 已验证环境（对接生产 DSPay API 的端到端实测）
+
+| Node.js 版本 | npm | 平台 | 结果 | 推荐 |
+|---|---|---|---|---|
+| 18.20.8 | 10.8.2 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | —（已 EOL，建议迁移） |
+| 20.20.0 | 10.8.2 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | —（已 EOL，建议迁移） |
+| 22.23.4 | 10.9.9 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — LTS |
+| 24.22.2 | 11.19.1 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | ⭐ 推荐 — LTS |
+| 26.13.0 | 11.20.0 | macOS arm64（nvm） | ✅ 下单成功，302 跳转收银台 | —（最新版，发布时间较近） |
+
+每行均经过两轮完整流程验证：`./start.sh` → 商店页 → Pay Now → 服务端创建订单 → `302` 跳转 `https://cashier.ds.pro/checkout/<订单号>`。已验证各线均持续支持；"—" 表示仍支持但不是新接入的首选。Node 自带 TLS 栈（BoringSSL 系），宿主机 OpenSSL 版本不影响连通性。商户执行 `node -v` 对照即可。
 
 脚本和直接启动均默认使用 `https://pay-api.ds.pro`，不再询问 API 地址；仅测试其他环境时显式设置 `DSPAY_BASE_URL`。API 地址必须是完整的 HTTP(S) 源地址，不允许尾部斜杠、路径、查询参数、用户名密码或空白；显式非法值会报错，不静默修正。
 
@@ -36,8 +48,8 @@ ngrok 示例：`ngrok http 3000`（端口应与 Demo 一致）。Nginx 可代理
 ```bash
 nvm install
 nvm use
-node --version  # v18.20.8
-npm --version   # 10.8.2
+node --version  # v22.23.4 (.nvmrc)
+npm --version   # 10.9.9
 ```
 
 > 命令中的 `REPLACE_WITH_REAL_MERCHANT_NO` 和 `REPLACE_WITH_REAL_API_SECRET` 是占位值，执行前必须替换为 DSPay 商户后台中的真实参数。DSPay API 地址默认使用正式环境地址 `https://pay-api.ds.pro`，无需填写；仅测试其他环境时覆盖。
@@ -89,7 +101,7 @@ Node.js 客户端通过内置 `tls`/HTTP/2 能力调用 HTTPS API，采用固定
 
 网络失败时，`DSPAY_ERROR` 日志的 `details` 会保留 Node.js 底层 `cause` 链及错误码，例如 `ECONNRESET`、`ENOTFOUND`、`ETIMEDOUT`。错误响应同时显示底层原因；10 秒超时会明确提示。没有收到 HTTP 响应的连接错误 与 Cloudflare HTTP 403 是不同故障，需根据实际错误码排查。
 
-运行回归测试：`node --test`（或 `npm test`）。TLS 测试使用 OpenSSL 生成临时本地证书；OpenSSL 仅为测试工具，启动 Demo 不需要它。传输模块在较低 Node 版本上的独立验证不改变整个 Demo 的 `>=18.20.8` 运行基线。
+运行回归测试：`node --test`（或 `npm test`）。TLS 测试使用 OpenSSL 生成临时本地证书；OpenSSL 仅为测试工具，启动 Demo 不需要它。
 
 ## 安全配置与部署
 

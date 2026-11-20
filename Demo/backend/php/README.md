@@ -2,9 +2,32 @@
 
 # DSPay PHP Mock Merchant
 
-PHP 5.6+, no Composer. The backend calls the DSPay create/query APIs and redirects to the `checkoutUrl` returned by the create response.
+PHP 8.1+, no Composer. The backend calls the DSPay create/query APIs and redirects to the `checkoutUrl` returned by the create response.
 
-Runtime baseline: PHP 5.6 minimum; all syntax checks, create-signature tests, and callback-verification tests were run with PHP CLI `5.6.40` and `8.5.10`. Composer is not required; only standard PHP extensions are used. `hash_equals()` requires PHP 5.6+.
+Runtime baseline: PHP 8.1+, zero third-party dependencies — no Composer required; only standard PHP extensions are used. Verified versions and the PHP 7.4 environment caveat are listed in the table below.
+
+## Verified environments (end-to-end against the production DSPay API)
+
+| PHP version | OpenSSL | Environment | Result | Recommended |
+|---|---|---|---|---|
+| 8.5.10 | OpenSSL 3.x | Homebrew, macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes — newest |
+| 8.4.27 | OpenSSL 3.x | Docker `php:8.4-cli` (Debian bookworm) | ✅ order created, 302 → cashier | ⭐ Yes |
+| 8.3.6 | OpenSSL 3.6.3 | self-built, macOS arm64 | ✅ order created, 302 → cashier | ⭐ Yes |
+| 8.2.35 | OpenSSL 3.x | Docker `php:8.2-cli` (Debian bookworm) | ✅ order created, 302 → cashier | ⭐ Yes |
+| 8.1.34 | OpenSSL 1.1.1 | Docker `php:8.1-cli` (Debian bullseye) | ✅ order created, 302 → cashier | ⭐ Yes — minimum recommended |
+| 7.4.33 | OpenSSL 4.0.3 | Homebrew shivammathur/php bottle | ✅ order created, 302 → cashier | Only with an OpenSSL 4 build |
+| 7.4.33 | OpenSSL 3.0.20 | sury bookworm image | ⚠️ blocked by the gateway WAF (HTTP 403) | ❌ No — blocked by old TLS fingerprint |
+| 7.4.33 | OpenSSL 1.1.1n | Docker `php:7.4-cli` (Debian bullseye) | ⚠️ blocked by the gateway WAF (HTTP 403) | ❌ No — blocked by old TLS fingerprint |
+
+Every ✅ row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`.
+
+**What this means for your environment.** PHP **8.1+** works on any modern OpenSSL (1.1.1 / 3.x / 4.x — all tested) — just check `php -v`. PHP **7.4** is the only version sensitive to the linked OpenSSL: builds with OpenSSL 4 (e.g. Homebrew `shivammathur/php` bottles since 2026-10) pass, while older builds (OpenSSL 1.1.1 / 3.0, i.e. distro packages and the official Docker image) are challenged by the gateway WAF with `DSPay HTTP 403; CF-Ray: ...`. The demo code itself has no defects on 7.4 (verified against a local mock). Check your build with:
+
+```bash
+php -v && php -r 'echo OPENSSL_VERSION_TEXT, PHP_EOL;'
+```
+
+If you are on PHP ≤ 7.4 with an older OpenSSL, upgrade to PHP 8.1+, or point `DSPAY_BASE_URL` at a local newer-stack proxy (any PHP 8 / Python 3 process on the same host), and hand the `CF-Ray` value from the error to DSPay support for tracing.
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders and must be replaced. The API address defaults to the DSPay production API; override it only when testing another environment.
 

@@ -170,22 +170,22 @@ Before you start integrating, have the following ready:
 - **An [EVM](#term-evm) wallet**: required for [SIWE](#term-siwe) login (MetaMask / Rabby / Trust all work — anything that supports `personal_sign`).
 - **A publicly reachable webhook URL**: where [DSPay](#term-dspay) will POST notifications (for local dev, use ngrok / cpolar).
 - **[NTP](#term-ntp)-synced system clock**: signature verification enforces a ±5-minute window; the server clock must be accurate.
-- **JDK 8+, Node.js 18.20.8, PHP 5.6+, or Python 3.10+**: to run the corresponding demos. Other languages can follow the specification.
+- **JDK 8+, Node.js >=18.20.8 (22 / 24 LTS recommended), PHP 8.1+ (PHP 7.4 only with OpenSSL 4 builds), or Python 3.10+ (3.12+ recommended)**: to run the corresponding demos. Other languages can follow the specification.
 - **Test stablecoins**: keep at least 0.02 [USDT](#term-usdt) on each mainnet used for integration testing to cover a 0.01 USDT order plus its matching suffix; fund the wallet's gas token separately.
 
 #### Demo Runtime Versions
 
-The following versions were used to execute the corresponding tests. When copying a sample, prefer a tested version below. “Minimum” is the lowest language/API baseline used by the source.
+The following versions were verified end to end against the production DSPay API (start → storefront → Pay Now → 302 redirect to `cashier.ds.pro`), twice per version. When copying a sample, prefer a recommended version below. “Minimum” is the lowest supported baseline.
 
 | Demo | Minimum | Tested versions | External dependencies |
 |------|---------|-----------------|-----------------------|
-| Inline Node.js samples and Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | No npm dependencies; built-in Node.js modules only |
-| Java Demo and Java verification samples | JDK 8 | Amazon Corretto `1.8.0_504` and Eclipse Temurin `21.0.11` | No Maven/Gradle dependencies; JDK standard library only |
-| PHP Demo | PHP 5.6 | PHP `5.6.40` and `8.5.10` CLI | No Composer dependencies; PHP standard extensions only |
-| Python Demo | Python 3.10 | Python `3.12.14` and `3.14.3` | Standard library only; no pip dependencies |
+| Inline Node.js samples and Node.js Demo | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0` (22 / 24 LTS recommended) | No npm dependencies; built-in Node.js modules only |
+| Java Demo and Java verification samples | JDK 8 | `8` (Corretto) / `11` / `17` / `21` / `25` (21 / 25 LTS recommended) | No Maven/Gradle dependencies; JDK standard library only |
+| PHP Demo | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`; `7.4.33` only with OpenSSL 4 builds (older-OpenSSL 7.4 is blocked by the gateway WAF) | No Composer dependencies; PHP standard extensions only |
+| Python Demo | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1` (3.12+ recommended, 3.14 preferred) | Standard library only; no pip dependencies |
 | Frontend Demo | A modern browser supporting `URL`, `sessionStorage`, and `crypto.randomUUID()` | Google Chrome `151.0.7922.175` | One HTML file; no framework or build tool |
 
-> Only one Node.js installation is needed. The unified debugging baseline is Node.js `18.20.8` + npm `10.8.2`; the Node.js Demo includes `.nvmrc`, so run `nvm use` in that directory. Validation environments include macOS `15.1` and Docker Linux. The Java Demo compiles with `javac -d build src/DspayMockMerchant.java` and runs with `java -cp build DspayMockMerchant` (create `build/` first); the PHP minimum is PHP 5.6 because callback verification uses `hash_equals()`.
+> The unified debugging baseline is Node.js `22.23.4` (`.nvmrc` in the Node.js Demo; run `nvm use` in that directory); any verified version above works. Validation environments include macOS `15.1` and Docker Linux. The Java Demo compiles with `javac -d build src/DspayMockMerchant.java` and runs with `java -cp build DspayMockMerchant` (create `build/` first). PHP below 8.1 is not supported for integration: older-OpenSSL builds of PHP ≤ 7.4 are challenged by the gateway WAF.
 
 ### 1.5 Core Integration Cheat Sheet
 

@@ -2,9 +2,21 @@
 
 # DSPay Node.js Mock Merchant
 
-The single runtime baseline is Node.js `18.20.8` + npm `10.8.2`, with no npm dependencies. The service signs and calls `POST /dspay/public/order/create` and `/query`; it never builds a signed cashier URL in the browser.
+The service signs and calls `POST /dspay/public/order/create` and `/query`; it never builds a signed cashier URL in the browser.
 
-The minimum and tested baseline are both Node.js `18.20.8` + npm `10.8.2`. The repository includes `.nvmrc`, and `package.json` declares `node >=18.20.8`. Multiple Node.js installations are not required, and no third-party npm packages are used.
+Runtime baseline: Node.js `>=18.20.8` (declared in `package.json`; `.nvmrc` pins the dev version), zero third-party npm packages. Verified versions are listed in the table below.
+
+## Verified environments (end-to-end against the production DSPay API)
+
+| Node.js version | npm | Platform | Result | Recommended |
+|---|---|---|---|---|
+| 18.20.8 | 10.8.2 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | — (EOL, migrate when possible) |
+| 20.20.0 | 10.8.2 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | — (EOL, migrate when possible) |
+| 22.23.4 | 10.9.9 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | ⭐ Yes — LTS |
+| 24.22.2 | 11.19.1 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | ⭐ Yes — LTS |
+| 26.13.0 | 11.20.0 | macOS arm64 (nvm) | ✅ order created, 302 → cashier | — (newest, released recently) |
+
+Every row was verified twice with the full flow: `./start.sh` → storefront page → Pay Now → server-side order creation → `302` redirect to `https://cashier.ds.pro/checkout/<orderId>`. All verified lines remain supported; "—" means still supported but not the first choice for new integrations. Node ships its own TLS stack (BoringSSL-derived), so the host's OpenSSL version does not affect connectivity. Compare with your environment via `node -v`.
 
 The API address defaults to `https://pay-api.ds.pro` for both script and direct startup, so it is not prompted. Set `DSPAY_BASE_URL` explicitly only to test another environment. API addresses must be complete HTTP(S) origins without a trailing slash, path, query, credentials, or whitespace; invalid explicit values are rejected rather than repaired.
 
@@ -36,8 +48,8 @@ For ngrok, run `ngrok http 3000` (match the Demo port). Nginx can proxy to `http
 ```bash
 nvm install
 nvm use
-node --version  # v18.20.8
-npm --version   # 10.8.2
+node --version  # v22.23.4 (.nvmrc)
+npm --version   # 10.9.9
 ```
 
 > `REPLACE_WITH_REAL_MERCHANT_NO` and `REPLACE_WITH_REAL_API_SECRET` below are placeholders. Replace them with real values from the DSPay Merchant Portal before running. The DSPay API base URL defaults to `https://pay-api.ds.pro`; override it only when testing another environment.
@@ -86,7 +98,7 @@ Upstream requests explicitly use 10-second timeouts and refuse redirects. Succes
 
 For network failures, `DSPAY_ERROR.details` retains the underlying Node.js cause chain and error codes such as `ECONNRESET`, `ENOTFOUND`, and `ETIMEDOUT`. Error responses also show the underlying cause; the 10-second timeout is reported explicitly. A connection error without an HTTP response is distinct from a Cloudflare HTTP 403 and must be diagnosed using its actual error code.
 
-Run regression tests with `node --test` (or `npm test`). TLS tests generate temporary local certificates using OpenSSL; OpenSSL is a test tool only and is not required to run the Demo. Independent transport checks on older Node releases do not change the full Demo runtime baseline of `>=18.20.8`.
+Run regression tests with `node --test` (or `npm test`). TLS tests generate temporary local certificates using OpenSSL; OpenSSL is a test tool only and is not required to run the Demo.
 
 ## Security configuration and deployment
 
