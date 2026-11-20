@@ -12,8 +12,8 @@ const { signCreateOrder, signQuery, verifyCallback } = require('./signer');
 
 const PORT = Number(process.env.PORT || 3000);
 const DSPAY_BASE_URL = apiBase(process.env.DSPAY_BASE_URL ?? 'https://pay-api.ds.pro');
-const MERCHANT_NO = process.env.MERCHANT_NO || 'change-me';
-const API_SECRET = process.env.API_SECRET || 'change-me';
+const MERCHANT_NO = required('MERCHANT_NO');
+const API_SECRET = required('API_SECRET');
 // Serve Demo/frontend by default; override the directory with the FRONT_END_DIR environment variable.
 const FRONT_END_DIR = process.env.FRONT_END_DIR || path.resolve(__dirname, '../../../frontend');
 function logEvent(event, fields) {
@@ -29,13 +29,13 @@ function logEvent(event, fields) {
     console.log(`[${event}] ${text}`);
 }
 
-function requestOrigin(req) {
-    const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
-    const host = local && req.headers['x-forwarded-host'] !== undefined ? req.headers['x-forwarded-host'] : req.headers.host;
-    const proto = local && req.headers['x-forwarded-proto'] !== undefined ? req.headers['x-forwarded-proto'] : 'http';
-    if (!['http', 'https'].includes(proto)) throw Object.assign(new Error('X-Forwarded-Proto must be http or https'), { status: 400 });
-    return apiBase(`${proto}://${host}`, 'Request origin');
+function required(name) {
+    const value = process.env[name];
+    if (value === undefined || value === '') throw new Error(name + ' is required');
+    return value;
 }
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL === undefined ? null : apiBase(process.env.PUBLIC_BASE_URL, 'PUBLIC_BASE_URL');
+const MAX_CALLBACK_BYTES = 64 * 1024;
 
 function apiBase(value, field = 'DSPAY_BASE_URL') {
     try {
@@ -50,7 +50,7 @@ function apiBase(value, field = 'DSPAY_BASE_URL') {
 }
 
 function json(res, status, body) {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(stringifyJson(body));
 }
 
@@ -101,9 +101,9 @@ async function createOrder(url, res, base) {
     if (!Object.hasOwn(args, 'payAmount')) throw parameterError('payAmount is required; minimum 0.01');
     const outOrderNo = Object.hasOwn(args, 'outOrderNo') ? identifier(args.outOrderNo, 'outOrderNo') : 'DEMO-' + crypto.randomBytes(16).toString('hex');
     const order = {merchantNo: MERCHANT_NO, outOrderNo, payAmount: amount(args.payAmount, 'payAmount', 12, 2, true),
-        attach: {demo: 'nodejs', customerId: 'CUST-1001'}, allowedPaymentMethods: [], timestamp: Date.now(),
-        returnUrl: `${base}/payment/return?outOrderNo=${encodeURIComponent(outOrderNo)}`,
-        successRedirectUrl: `${base}/payment/success?outOrderNo=${encodeURIComponent(outOrderNo)}`};
+        attach: {demo: 'nodejs', customerId: 'CUST-1001'}, allowedPaymentMethods: [], timestamp: Date.now()};
+    if (base !== null) Object.assign(order, {returnUrl: `${base}/payment/return?outOrderNo=${encodeURIComponent(outOrderNo)}`,
+        successRedirectUrl: `${base}/payment/success?outOrderNo=${encodeURIComponent(outOrderNo)}`});
     if (Object.hasOwn(args, 'productPrice')) { order.productPrice = amount(args.productPrice, 'productPrice', 14, 6); order.productPriceCurrency = 'USD'; }
     if (Object.hasOwn(args, 'productPriceCurrency')) order.productPriceCurrency = args.productPriceCurrency;
     if (Object.hasOwn(args, 'productId')) {
@@ -134,8 +134,21 @@ async function queryOrder(url, res) {
 
 function notify(req, res) {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
+    let size = 0, oversized = false;
+    req.on('data', (chunk) => {
+        if (oversized) return;
+        size += chunk.length;
+        if (size > MAX_CALLBACK_BYTES) {
+            oversized = true;
+            chunks.length = 0;
+            res.setHeader('Connection', 'close');
+            json(res, 413, {code: 'FAIL', msg: 'Callback body exceeds 65536 bytes'});
+            return;
+        }
+        chunks.push(chunk);
+    });
     req.on('end', () => {
+        if (oversized) return;
         let rawBody;
         try { rawBody = new TextDecoder('utf-8', {fatal: true}).decode(Buffer.concat(chunks)); }
         catch (_) { return json(res, 400, {code: 'FAIL', msg: 'Callback must be UTF-8 JSON'}); }
@@ -162,7 +175,7 @@ const server = http.createServer(async (req, res) => {
                 return end.call(this, body, ...args);
             };
         }
-        if (req.method === 'GET' && url.pathname === '/create') return await createOrder(url, res, requestOrigin(req));
+        if (req.method === 'GET' && url.pathname === '/create') return await createOrder(url, res, PUBLIC_BASE_URL);
         if (req.method === 'GET' && url.pathname === '/query') return await queryOrder(url, res);
         if (req.method === 'POST' && url.pathname === '/notify') return notify(req, res);
         // returnUrl (cancel/return) -> store front page; successRedirectUrl -> order query

@@ -12,9 +12,9 @@
 Demo/
 ├── frontend/index.html
 └── backend/
-    ├── nodejs/   Node.js 18.20.8，零 npm 依赖
+    ├── nodejs/   Node.js >=18.20.8，零 npm 依赖
     ├── java/     JDK 8+，零外部依赖
-    ├── php/      PHP 5.6+，无需 Composer
+    ├── php/      PHP 8.1+，无需 Composer
     └── python/   Python 3.10+，仅标准库
 ```
 
@@ -22,13 +22,13 @@ Demo/
 
 | Demo | 最低版本 | 已验证版本 | 依赖说明 |
 |------|----------|------------|----------|
-| Node.js | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 零 npm 依赖；提供 `.nvmrc` |
-| Java | JDK 8 | 已在 Corretto `1.8.0_504`、Microsoft OpenJDK `11.0.27` 与 Temurin `17.0.21` / `21.0.11` 验证 | 零 Maven/Gradle 依赖 |
-| PHP | PHP 5.6 | PHP CLI `5.6.40`、`8.5.10` | 无需 Composer |
-| Python | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
+| Node.js | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0`（推荐 22 / 24 LTS） | 零 npm 依赖；提供 `.nvmrc` |
+| Java | JDK 8 | `8`（Corretto）/ `11` / `17` / `21` / `25`（推荐 21 / 25 LTS） | 零 Maven/Gradle 依赖 |
+| PHP | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`；`7.4.33` 仅限 OpenSSL 4 构建（老 OpenSSL 的 7.4 会被网关 WAF 拦截） | 无需 Composer |
+| Python | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1`（推荐 3.12+，首选 3.14） | 仅标准库，无 pip 依赖 |
 | 前端 | 支持 `crypto.randomUUID()` 的现代浏览器 | Chrome `151.0.7922.175` | 单文件 HTML，无构建步骤 |
 
-现有 Demo 的历史验证环境包括 macOS `15.1`、Docker Linux；Python 本次在本机使用表中两个版本执行测试。最低版本和已验证版本含义不同：最低版本是源码兼容基线，已验证版本是仓库测试实际运行过的版本。
+所有后端行均按端到端流程（启动 → 商店页 → Pay Now → 302 跳转 `cashier.ds.pro`）对生产 DSPay API 实测，每版本两轮；历史验证环境还包括 macOS `15.1`、Docker Linux。最低版本是支持基线，已验证版本是仓库测试实际运行过的版本；各语言指南内有含发行版、OpenSSL 与推荐标记的逐版本明细表。
 
 运行前可先确认本机版本：
 
@@ -74,13 +74,13 @@ npm test
 
 ## 简单启动（四种 Demo 通用）
 
-启动只需商户号和 API 密钥，不需要配置访问域名。默认监听 `3000`，可用 `PORT=4000 ./start.sh` 更换端口。支付返回链接根据创建订单请求的域名和协议生成；通过 ngrok/nginx 访问时，请从公网地址打开 Demo 并创建订单。真实回调地址为 `<公网地址>/notify`，仍需在商户后台单独登记。
+启动只需商户号和 API 密钥，不需要配置访问域名。默认监听 `3000`，可用 `PORT=4000 ./start.sh` 更换端口。默认不发送支付返回链接；需要返回商户页面时，启动前设置可选的 `PUBLIC_BASE_URL` 为可信访问源地址，例如 `https://shop.example.com`（无尾部斜杠和路径）。返回链接只使用此配置，不读取 `Host` 或 `X-Forwarded-*`。真实回调地址为 `<公网地址>/notify`，仍需在商户后台单独登记。
 
-ngrok 示例：`ngrok http 3000`（端口应与 Demo 一致）。nginx 请转发到 `http://127.0.0.1:3000`，设置 `proxy_set_header Host $http_host;` 和 `proxy_set_header X-Forwarded-Proto $scheme;`，并覆盖客户端传入的 `X-Forwarded-Host`：`proxy_set_header X-Forwarded-Host $http_host;`。Demo 仅信任来自本机回环地址的代理头，代理链应提供单个正确的域名和协议，不能传入逗号列表；公网入口应通过该代理访问。
+ngrok 示例：`ngrok http 3000`（端口应与 Demo 一致）。Nginx 可代理到 `http://127.0.0.1:3000`；支付返回链接必须显式配置 `PUBLIC_BASE_URL`，不使用代理头推导。公网访问限制见安全部署说明。
 
 启动成功后会显示监听端口、本地页面、回调地址格式和公网映射步骤。
 
-支付返回链接根据创建订单请求的访问地址生成。真实回调必须使用公网地址，并在商户后台单独登记；localhost 无法接收 DSPay 的远程回调。
+支付返回链接仅在配置 `PUBLIC_BASE_URL` 时生成。真实回调必须使用公网地址，并在商户后台单独登记；localhost 无法接收 DSPay 的远程回调。
 
 维护者安装四种运行环境后，可在仓库根目录执行跨语言启动回归检查：
 
@@ -99,7 +99,7 @@ export API_SECRET="REPLACE_WITH_REAL_API_SECRET"
 npm start        # 等价于 node src/server.js
 ```
 
-四种语言后端都会直接托管商店页：执行 `./start.sh` 后，浏览器打开启动时显示的本地页面或对外访问地址点击 Pay Now 即可——页面与接口同源，无需额外静态托管。本地也可以直接双击打开 `Demo/frontend/index.html`（页面会自动回退请求 `http://localhost:3000`）。可选环境变量 `FRONT_END_DIR` 可指定其他前端目录（默认 `../../frontend`）。
+四种语言后端都会直接托管商店页：执行 `./start.sh` 后，浏览器打开启动时显示的本地页面或对外访问地址点击 Pay Now 即可——页面与接口同源，无需额外静态托管。请通过后端提供的 HTTP 页面访问，避免直接双击本地 HTML 文件；Node 不再开放通配符 CORS。可选环境变量 `FRONT_END_DIR` 可指定其他前端目录（默认 `../../frontend`）。
 
 接收真实回调需要公网可访问地址。可用 ngrok 等工具代理 Demo 的监听端口，将公网 `/notify` 地址单独登记到商户后台。
 
@@ -172,6 +172,12 @@ python3 -B src/server.py
 
 `/create` 必须提供 `payAmount`，最少 `0.01`，整数最多 12 位、小数最多 2 位。未提供 `outOrderNo` 时生成新订单号；显式空值和非法值报错。可选 `productPrice` 整数最多 14 位、小数最多 6 位，币种为 USD；`productId` 最多 64 个字符。缺少可选商品参数时不补默认商品。未知、重复参数及非法订单号、前导零、科学计数法和金额空白均返回 HTTP 400。合法字符串保留原值，不静默 trim；可选空值的签名排除仍遵循 SDK 约定。
 
-回调保留 JSON 大整数和小数精度，拒绝重复 JSON 字段。`timestamp` 必须是非负整数毫秒值，允许当前时间前后 5 分钟，包含边界。验签或时间窗不通过返回 HTTP 401。Demo 不额外设置回调正文的固定大小上限。
+回调保留 JSON 大整数和小数精度，拒绝重复 JSON 字段。`timestamp` 必须是非负整数毫秒值，允许当前时间前后 5 分钟，包含边界。验签或时间窗不通过返回 HTTP 401。回调正文上限为 64 KiB，超限返回 HTTP 413。
 
 上游请求显式配置 10 秒超时，不跟随重定向。成功必须满足顶层整数 `code` 为 `0` 且包含 `data`；不能只看 HTTP 200 或 `header.resultCode`。HTTP 错误、业务码非零、响应格式异常或超时统一返回 HTTP 502，并保留诊断日志。网络库、代理默认行为和 TLS 特征仍由各运行时决定。
+
+## 安全配置与部署
+
+商户号和 apiSecret 必须显式提供，没有兜底值；缺少配置时拒绝运行。`PUBLIC_BASE_URL` 为可选环境变量，未配置时省略支付返回链接，支付后停留收银台；显式空值或非法值会报错。回调请求体上限为 64 KiB。创建、查询接口保持演示用途，生产权限和订单归属需由商户实现。详见[安全部署说明](SECURITY-DEPLOYMENT.zh-CN.md)。
+
+接入说明：支付 Key（`apiSecret`）仅在创建或轮换时完整展示一次，请立即保存。原样跳转创建接口返回的完整 `checkoutUrl`，保留 `x-digitalshield-temp-token` 查询参数。回调在接口能力上可选，生产建议启用并以主动查询兜底。

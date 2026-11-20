@@ -6,8 +6,7 @@ use DSPay\Api\Client;
 use DSPay\Api\Payment;
 use DSPay\Api\RequestBuilderException;
 
-$merchantNo = getenv('MERCHANT_NO') ?: 'change-me-to-your-merchantNo';
-$apiSecret = getenv('API_SECRET') ?: 'change-me-to-your-apiSecret';
+require __DIR__ . '/config.php';
 $payment = Client::payment($merchantNo, $apiSecret);
 
 function jsonResponse($status, $body)
@@ -17,15 +16,6 @@ function jsonResponse($status, $body)
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo \DSPay\Api\LosslessJson::encode($body);
-}
-
-function requestOrigin()
-{
-    $local = in_array($_SERVER['REMOTE_ADDR'], array('127.0.0.1', '::1', '::ffff:127.0.0.1'), true);
-    $host = $local && isset($_SERVER['HTTP_X_FORWARDED_HOST']) ? $_SERVER['HTTP_X_FORWARDED_HOST'] : $_SERVER['HTTP_HOST'];
-    $proto = $local && isset($_SERVER['HTTP_X_FORWARDED_PROTO']) ? $_SERVER['HTTP_X_FORWARDED_PROTO'] : 'http';
-    if ($proto !== 'http' && $proto !== 'https') throw new RequestBuilderException('X-Forwarded-Proto must be http or https', 400);
-    return Payment::origin($proto . '://' . $host, 'Request origin');
 }
 
 function parameters($allowed)
@@ -67,8 +57,11 @@ function orderData($merchantNo, $publicBase)
     $number = array_key_exists('outOrderNo', $args) ? identifier($args['outOrderNo'], 'outOrderNo') : 'DEMO-' . bin2hex(openssl_random_pseudo_bytes(16));
     $order = array('merchantNo' => $merchantNo, 'outOrderNo' => $number, 'payAmount' => amount($args['payAmount'], 'payAmount', 12, 2, true),
         'attach' => array('demo' => 'php', 'customerId' => 'CUST-1001'), 'allowedPaymentMethods' => array(),
-        'returnUrl' => $publicBase . '/payment/return?outOrderNo=' . rawurlencode($number),
-        'successRedirectUrl' => $publicBase . '/payment/success?outOrderNo=' . rawurlencode($number), 'timestamp' => (int)floor(microtime(true) * 1000));
+        'timestamp' => (int)floor(microtime(true) * 1000));
+    if ($publicBase !== null) {
+        $order['returnUrl'] = $publicBase . '/payment/return?outOrderNo=' . rawurlencode($number);
+        $order['successRedirectUrl'] = $publicBase . '/payment/success?outOrderNo=' . rawurlencode($number);
+    }
     if (array_key_exists('productPrice', $args)) { $order['productPrice'] = amount($args['productPrice'], 'productPrice', 14, 6); $order['productPriceCurrency'] = 'USD'; }
     if (array_key_exists('productPriceCurrency', $args)) $order['productPriceCurrency'] = $args['productPriceCurrency'];
     if (array_key_exists('productId', $args)) {
@@ -88,7 +81,7 @@ if (in_array($path, array("/create", "/query", "/notify"), true)) {
 
 try {
     if ($method === 'GET' && $path === '/create') {
-        $result = $payment->createOrder(orderData($merchantNo, requestOrigin()));
+        $result = $payment->createOrder(orderData($merchantNo, $publicBase));
         $checkout = is_object($result) && isset($result->checkoutUrl) ? $result->checkoutUrl : null;
         if (!is_string($checkout) || preg_match('/[\s\x00-\x1f]/', $checkout) || !preg_match('~^https?://~D', $checkout) || !parse_url($checkout, PHP_URL_HOST)) throw new RequestBuilderException('DSPay create response must contain a complete checkoutUrl', 502);
         Payment::logEvent("DEMO_RESPONSE", array("path" => $path, "status" => 302, "location" => $checkout, "body" => ""), $apiSecret);
@@ -103,7 +96,8 @@ try {
         return;
     }
     if ($method === 'POST' && $path === '/notify') {
-        $rawBody = file_get_contents('php://input');
+        $rawBody = file_get_contents('php://input', false, null, 0, 65537);
+        if (strlen($rawBody) > 65536) { jsonResponse(413, array('code' => 'FAIL', 'msg' => 'Callback body exceeds 65536 bytes')); return; }
         if (!preg_match('//u', $rawBody)) { jsonResponse(400, array("code" => "FAIL", "msg" => "Callback must be UTF-8 JSON")); return; }
         $signature = isset($_SERVER['HTTP_X_DSPAY_SIGNATURE']) ? $_SERVER['HTTP_X_DSPAY_SIGNATURE'] : '';
         Payment::logEvent("CALLBACK_REQUEST", array("body" => $rawBody, "signature" => $signature === "" ? "missing" : "[REDACTED]"), $apiSecret);
