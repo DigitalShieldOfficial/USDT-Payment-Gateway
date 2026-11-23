@@ -39,14 +39,14 @@
 | <a id="term-apisecret"></a>**apiSecret** | 商户 API 密钥，用于签名创建/查询请求及验证回调，在 [DSPay 后台](https://mcashier.ds.pro/login/)获取，只能保存在商户服务端 |
 | <a id="term-merchantno"></a>**merchantNo** | 商户业务编号（新商户为 `DSM` 前缀，如 `DSM1`；兼容存量 `M` 前缀），调用公共创建/查询接口时必传；对外暴露的业务编码，**非 DB 自增主键** |
 | **orderNo** | DSPay 创建订单后返回的订单唯一标识，用于查询、回调、对账和收银台页面寻址 |
-| **checkoutUrl** | 创建订单接口返回的完整收银台地址，格式为 `{payPageBaseUrl}/checkout/{orderNo}`；商户只负责跳转，不自行拼接业务参数 |
+| **checkoutUrl** | 创建订单接口返回的完整收银台地址，格式为 `{payPageBaseUrl}/checkout/{orderNo}?x-digitalshield-temp-token={token}`；商户只负责跳转，不自行拼接业务参数 |
 | <a id="term-networkid"></a>**networkId** | 链的唯一标识（如 `evm--1` = Ethereum 主网），完整列表见 [§3.2](#networkid-速查表) |
 | <a id="term-contractaddress"></a>**contractAddress** | 代币合约或 mint 地址；可与 `networkId` 组成 `allowedPaymentMethods` 项，限制用户在收银台可选的支付方式 |
 | <a id="term-hmac-sha256"></a>**HMAC-SHA256** | 哈希消息认证码算法；DSPay 用 `apiSecret` 作 key 对规范化字符串计算，输出 hex 小写 |
 | <a id="term-evm"></a>**EVM** | Ethereum Virtual Machine，以太坊虚拟机；EVM 系链指兼容以太坊智能合约的链（Ethereum / BSC / Polygon / Arbitrum / Base） |
 | <a id="term-usdt"></a>**USDT** / <a id="term-usdc"></a>**USDC** | 与美元锚定的稳定币（Tether USD / Centre USD Coin） |
 | **尾数（<a id="term-amountsuffix"></a>amountSuffix）** | DSPay 为区分同金额并发订单附加的小额尾数。稳定币固定按 6 位精度处理：商户金额最多使用前 2 位小数，后 4 位用于 `1～9999` 尾数槽位。例如槽位 `137` 生成 `0.000137`，详见 [§4.1](#订单尾数机制详解) |
-| **补单（<a id="term-supplement"></a>supplement）** | CLOSED 订单后续链上到账时，由商户在后台确认到账、订单重开为 COMPLETED 的操作 |
+| **补单（<a id="term-supplement"></a>supplement）** | 对符合资格的 CREATED／TIMEOUT／CLOSED 订单，在后台核实到账并更新为 COMPLETED；仅 CLOSED 路径属于重开 |
 | **回调（<a id="term-webhook"></a>webhook）** | DSPay 向商户 `notifyUrl` 发送的 HTTP POST 通知，事件类型：`CLOSED` / `COMPLETED` / `REFUNDED`；`CREATED` / `TIMEOUT` 仅推进订单状态，不发送回调 |
 | <a id="term-notifyurl"></a>**notifyUrl** | 商户接收 DSPay 回调通知的公网可达地址；支持 `http://` 和 `https://`，生产环境建议 HTTPS |
 | <a id="term-ntp"></a>**NTP** | Network Time Protocol，网络时间协议；用于服务器时钟同步 |
@@ -75,13 +75,13 @@
 
 ### Step 1：准备商户配置
 
-在 DSPay 后台获取 `merchantNo` 和 `apiSecret`，并至少配置一个已启用的收款地址。首次启用回调会自动生成 `apiSecret`；若暂不配置 `notifyUrl`，可通过后台密钥管理主动生成密钥。回调可稍后启用，但生产上线前必须完成。
+在 DSPay 后台获取 `merchantNo` 和 `apiSecret`，并至少配置一个已启用的收款地址。首次启用回调会自动生成 `apiSecret`；若暂不配置 `notifyUrl`，可通过后台密钥管理主动生成密钥。回调在接口能力上可选；生产建议启用回调，并使用主动查询兜底。
 
 > **密钥安全**：`apiSecret` 只能保存在商户服务端。禁止将其嵌入前端代码、浏览器存储或 URL，也不要粘贴到第三方在线工具。本地签名和验签测试使用任意编造的本地测试密钥（如 `demo-secret`，非 DSPay 发放，DSPay 无 sandbox 测试密钥体系）；真实密钥只用于商户服务端调用正式 API 和验证真实回调。
 
 ### Step 2：服务端预创建订单
 
-填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用统一基线 Node.js `18.20.8` 运行。DSPay API 地址已预填为正式环境地址。
+填入你的 `merchantNo` 和 `apiSecret`，保存为 `create-order.mjs`，使用推荐调试基线 Node.js `22.23.4` 运行。DSPay API 地址已预填为正式环境地址。
 
 > 执行前必须将下面的 `MERCHANT_NO` 和 `API_SECRET` 替换为 DSPay 商户后台中的真实参数值。`DSPAY_BASE_URL` 已预填为 DSPay 正式 API 地址，仅测试其他环境时修改。
 
@@ -190,22 +190,22 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 - **[EVM](#term-evm) 钱包**：用于 [SIWE](#term-siwe) 登录（MetaMask / Rabby / Trust 等均可，只需能 `personal_sign`）
 - **公网可达的回调 URL**：用于接收 [DSPay](#term-dspay) 异步通知（本地开发可用 ngrok / cpolar）
 - **[NTP](#term-ntp) 时钟同步**：签名验证有 ±5 分钟时间窗口，服务器时钟必须准确
-- **JDK 8+、Node.js 18.20.8、PHP 5.6+ 或 Python 3.10+**：运行对应语言 Demo（其他语言可按规范自行实现）
+- **JDK 8+、Node.js >=18.20.8（推荐 22 / 24 LTS）、PHP 8.1+（PHP 7.4 仅限 OpenSSL 4 构建）或 Python 3.10+（推荐 3.12+）**：运行对应语言 Demo（其他语言可按规范自行实现）
 - **测试用稳定币**：每条用于联调的主网钱包至少准备 0.02 [USDT](#term-usdt)，用于覆盖 0.01 USDT 原始金额及订单识别尾数；链上 Gas 代币需另行准备
 
 #### Demo 运行时版本
 
-以下版本已实际执行对应测试。复制示例时建议优先使用表中的已验证版本；“最低版本”表示源码使用的最低语言/API基线。
+以下版本均按端到端流程（启动 → 商店页 → Pay Now → 302 跳转 `cashier.ds.pro`）对生产 DSPay API 实测，每版本两轮。复制示例时建议优先使用表中推荐版本；“最低版本”表示受支持的基线。
 
 | Demo | 最低版本 | 已验证版本 | 外部依赖 |
 |------|----------|------------|----------|
-| 文档内 Node.js 示例、Node.js Demo | Node.js `18.20.8` | Node.js `18.20.8` + npm `10.8.2` | 无 npm 依赖，仅使用 Node.js 内置模块 |
-| Java Demo、Java 验签示例 | JDK 8 | Amazon Corretto `1.8.0_504`、Eclipse Temurin `21.0.11` | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
-| PHP Demo | PHP 5.6 | PHP `5.6.40`、`8.5.10` CLI | 无 Composer 依赖，仅使用 PHP 标准扩展 |
-| Python Demo | Python 3.10 | Python `3.12.14`、`3.14.3` | 仅标准库，无 pip 依赖 |
+| 文档内 Node.js 示例、Node.js Demo | Node.js `>=18.20.8` | `18.20.8` / `20.20.0` / `22.23.4` / `24.22.2` / `26.13.0`（推荐 22 / 24 LTS） | 无 npm 依赖，仅使用 Node.js 内置模块 |
+| Java Demo、Java 验签示例 | JDK 8 | `8`（Corretto）/ `11` / `17` / `21` / `25`（推荐 21 / 25 LTS） | 无 Maven/Gradle 依赖，仅使用 JDK 标准库 |
+| PHP Demo | PHP 8.1 | `8.1.34` / `8.2.35` / `8.3.6` / `8.4.27` / `8.5.10`；`7.4.33` 仅限 OpenSSL 4 构建（老 OpenSSL 的 7.4 会被网关 WAF 拦截） | 无 Composer 依赖，仅使用 PHP 标准扩展 |
+| Python Demo | Python 3.10 | `3.10.16` / `3.11.13` / `3.12.3` / `3.13.6` / `3.14.3` / `3.15.1`（推荐 3.12+，首选 3.14） | 仅标准库，无 pip 依赖 |
 | 前端 Demo | 支持 `URL`、`sessionStorage`、`crypto.randomUUID()` 的现代浏览器 | Google Chrome `151.0.7922.175` | 单个 HTML 文件，无前端框架和构建工具 |
 
-> Node.js 只需安装一个版本，统一调试基线为 Node.js `18.20.8` + npm `10.8.2`；Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动；PHP Demo 的最低版本由 `hash_equals()` 决定，为 PHP 5.6。
+> 统一调试基线为 Node.js `22.23.4`（Node.js Demo 提供 `.nvmrc`，可在其目录执行 `nvm use`）；表中任意已验证版本均可使用。验证环境包括 macOS `15.1` 和 Docker Linux。Java Demo 先创建 `build/` 目录，再用 `javac -d build src/DspayMockMerchant.java` 编译，通过 `java -cp build DspayMockMerchant` 启动。PHP 8.1 为接入基线；PHP 7.4 仅保留特定构建的兼容验证记录，不推荐生产使用。
 
 ### 1.5 核心接入速查表
 
@@ -248,7 +248,7 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 
 登录后可获取：
 - **[merchantNo](#term-merchantno)**：商户业务编号（新商户为 `DSM` 前缀，兼容存量 `M` 前缀），调用公共创建/查询接口时必传
-- **[apiSecret](#term-apisecret)**：API 密钥，用于收银台链接签名和回调验签（后台页面展示，妥善保管）
+- **[apiSecret](#term-apisecret)**：API 密钥，用于服务端创建／查询请求签名及回调验签；完整支付 Key 仅在创建或轮换成功时展示一次，关闭前复制并安全保存，遗失后需轮换
 
 <a id="会话有效期"></a>
 ### 2.2 会话有效期
@@ -259,7 +259,7 @@ console.log('checkoutUrl:', result.data.checkoutUrl);
 
 ### 2.3 ⚠️ 坑点（2 条）
 
-1. **首次登录需完成配置**：首次登录后还没有 [apiSecret](#term-apisecret) / 收款地址 / 回调 URL，需在后台完成配置后才能正常收款。否则创建订单会报 [`50609`](#error-50609) `NO_ENABLED_ADDRESS`。
+1. **首次登录需完成配置**：缺少支付 Key 时创建请求返回 `50613`；缺少可用收款地址时返回 `50609 NO_ENABLED_ADDRESS`。未配置回调不阻止创建，但无法接收通知，应通过主动查询确认结果。
 
 2. **[apiSecret](#term-apisecret) 妥善保管**：[apiSecret](#term-apisecret) 用于签名和验签，泄漏会导致伪造订单/回调。建议定期在后台轮换（参考 [§6.4 密钥轮换](#密钥定期轮换)）。
 
@@ -350,20 +350,24 @@ GET /dspay/public/supported-chains
 
 ### 3.4 后台关键配置概览
 
+- 首次配置按后台引导完成：收款地址 → 支付 Key（`apiSecret`）→ 回调地址；已完成步骤会跳过。回调可选，建议启用并以主动查询兜底。
+
 [DSPay 后台](https://mcashier.ds.pro/login/)提供两类关键配置，商户需理解其用途与默认状态：
 
 | 配置 | 位置 | 默认 | 用途与影响 |
 |------|------|------|-----------|
 | 回调设置 | 后台 → 回调配置 | **关闭** | 配置回调 URL + 开关；**必须手动启用**才能收到 `CLOSED` / `COMPLETED` / `REFUNDED` 通知（创建订单、用户付款都成功，但回调没开 = 商户后端收不到通知） |
-| 密钥管理 | 后台 → 安全设置 | 正常 | 查看 [apiSecret](#term-apisecret) / 紧急冻结密钥（`apiSecretEnabled=false`，冻结后回调停发 + 创建订单报 [`50503`](#error-50503)）/ regenerate 换新 key |
+| 密钥管理 | 后台 → 安全设置 | 正常 | 创建或轮换时一次性保存 [apiSecret](#term-apisecret) / 紧急冻结密钥（`apiSecretEnabled=false`，冻结后回调停发 + 创建订单报 [`50503`](#error-50503)）/ regenerate 换新 key |
 
 **关键提醒**：
 - **回调开关默认关闭**：新商户最容易遗漏这一步，必须在后台手动启用
-- **[apiSecret](#term-apisecret) 首次获取**：首次启用回调时自动生成，在后台页面查看
+- **[apiSecret](#term-apisecret) 首次获取**：可在设置中独立创建；首次启用回调且无密钥时也会生成，完整值仅展示一次
 - **创建订单始终依赖密钥**：[HMAC-SHA256](#term-hmac-sha256) 签名校验，密钥冻结后无法下单
 
 <a id="配置回调-url-启用回调"></a>
 ### 3.5 配置回调 URL + 启用回调
+
+- 保存回调地址需确认；地址最长 512 字符，不允许空白及编码换行 `%0a`／`%0d`（不区分大小写），DNS 解析结果必须全部为公网地址。公网预检失败返回 `50504 NOTIFY_URL_NOT_PUBLIC`；发送时仍检查目的地址。内网联调用公网隧道。
 
 在 [DSPay 后台](https://mcashier.ds.pro/login/)配置回调 URL（商户接收支付通知的 webhook 地址）并启用回调。当前支持 HTTP 和 HTTPS，生产环境建议使用 HTTPS。
 
@@ -371,7 +375,7 @@ GET /dspay/public/supported-chains
 - **回调 URL**：商户的回调接收地址（必须公网可达）
 - **回调开关**：默认**关闭**，必须在后台**手动启用**
 
-> 首次启用回调时，若商户无 [apiSecret](#term-apisecret) 会自动生成。[apiSecret](#term-apisecret) 在后台页面查看。
+> 首次启用回调时，若商户无 [apiSecret](#term-apisecret) 会自动生成。完整支付 Key 仅在成功弹窗展示一次；关闭后无法查询，遗失后需轮换并更新商户服务端配置。
 
 > 回调 URL 变更后需在后台同步更新。
 
@@ -449,7 +453,7 @@ Content-Type: application/json
 | `attach` | object | 否 | 值非null时 | 附加 JSON 对象；规范化 JSON 的 UTF-8 编码长度最多 4096 字节，嵌套深度最多 3 层 |
 | `payAmount` | decimal | 是 | 是 | 原始应付代币金额；最小值 `0.01`，整数部分最多 12 位，小数部分最多 2 位 |
 | `allowedPaymentMethods` | array | 否 | 值非null时 | 限制用户可选组合；数组最多 50 项；不传或传空数组表示不额外限制；显式空数组参与签名时值为空字符串 |
-| `returnUrl` | string | 否 | 非空时 | 可选；订单进入 `TIMEOUT` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。空串、`null` 或未传时不进入签名串 |
+| `returnUrl` | string | 否 | 非空时 | 可选；超时结果页提供返回按钮，由用户点击跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。空串、`null` 或未传时不进入签名串 |
 | `successRedirectUrl` | string | 否 | 非空时 | 可选；仅订单进入 `COMPLETED` 时跳转。必须是以 `http://` 或 `https://` 开头的完整 URL，可包含端口、路径和查询参数；整个 URL 最长 8192 个字符。空串、`null` 或未传时不进入签名串；未配置时停留 DSPay 成功页 |
 | `timestamp` | long | 是 | 是 | Unix 毫秒时间戳；与 DSPay 服务端当前时间的差值绝对值不得超过 300000 毫秒（5 分钟） |
 | `signature` | string | 是 | 否 | HMAC-SHA256 十六进制字符串，固定 64 个字符；大小写均接受，建议输出小写；字段本身不参与签名 |
@@ -490,7 +494,7 @@ Content-Type: application/json
 |---|---:|---|
 | `orderNo` | 是 | DSPay 订单号；用于查询、回调、对账和收银台寻址 |
 | `outOrderNo` | 是 | 商户订单号 |
-| `checkoutUrl` | 是 | 完整地址：`{payPageBaseUrl}/checkout/{orderNo}` |
+| `checkoutUrl` | 是 | 完整地址：`{payPageBaseUrl}/checkout/{orderNo}?x-digitalshield-temp-token={token}` |
 | `status` | 是 | 创建成功固定 `CREATED` |
 | `originPayAmount` | 是 | 原始金额，不含识别尾数 |
 | `createAt` | 是 | 创建时间，Unix 毫秒 |
@@ -502,7 +506,7 @@ Content-Type: application/json
   "data": {
     "orderNo": "1949695024925671424",
     "outOrderNo": "ORDER-20260821-001",
-    "checkoutUrl": "https://cashier.ds.pro/checkout/1949695024925671424",
+    "checkoutUrl": "https://cashier.ds.pro/checkout/1949695024925671424?x-digitalshield-temp-token=TOKEN_PLACEHOLDER",
     "status": "CREATED",
     "originPayAmount": "100.00",
     "createAt": 1787292001000,
@@ -551,11 +555,15 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 `merchantNo + outOrderNo` 是唯一幂等键：
 
 - 每笔新订单必须生成新的 `outOrderNo`；不能在会话内给不同订单复用。
-- 重复请求且业务字段一致：返回首次创建的同一 `orderNo/checkoutUrl/expireAt`，不延长订单时间。
+- 重复请求且业务字段一致：返回首次创建的同一 `orderNo/expireAt`；`checkoutUrl` 中的临时令牌可能重新签发，链接字符串不保证相同，不延长订单时间。
 - 幂等键相同但业务字段不同：返回错误码`40901`，错误信息“商户订单号已被使用”（`Merchant order number has already been used`）。
 - 仅同一笔订单的网络超时重试复用原 `outOrderNo`，并保持业务字段一致。
 
 ### 4.5 收银台行为和跳转
+
+- 支付期限、订单查看期限和令牌期限分别判断：默认订单创建后 180 天不可查看；令牌从签发时起按相同天数配置计算，重新获取链接不会延长订单查看期限或支付期限。
+
+- `checkoutUrl` 含订单绑定的临时访问令牌。商户必须原样使用完整链接，保留全部查询参数，不自行生成／解析令牌，不替换订单号。令牌不是 `apiSecret`，由收银台读取并放入同名请求头。
 
 只使用创建响应的 `checkoutUrl`；不要自行拼接业务参数。
 
@@ -570,7 +578,7 @@ signature = lowercaseHex(HMAC_SHA256(apiSecret, canonicalString UTF-8))
 |---|---|
 | `COMPLETED` 且配置 `successRedirectUrl` | 跳转 `successRedirectUrl` |
 | `COMPLETED` 但未配置 | 停留成功页，不跳转，不使用 `returnUrl` 兜底 |
-| 订单 `TIMEOUT`，且配置 `returnUrl` | 跳转 `returnUrl` |
+| 订单 `TIMEOUT`，且配置 `returnUrl` | 显示超时结果，用户点击返回按钮后跳转 `returnUrl` |
 | 订单 `TIMEOUT`，但未配置 `returnUrl` | 停留 DSPay 超时页面，不跳转 |
 | 其他情况 | 不使用 `returnUrl` 自动跳转 |
 
@@ -587,6 +595,8 @@ Java 可运行 Demo 统一维护在 [`Demo/backend/java`](../Demo/backend/java/R
 <a id="node.js-端到端-demo"></a>
 <a id="47-nodejs--php-demo"></a>
 ### 4.7 Node.js / PHP / Python Demo
+
+- Demo 的 `PUBLIC_BASE_URL` 源地址限制及 64 KiB 回调正文上限属于 Demo 约束，不是 DSPay 公共接口契约。
 
 Node.js、PHP 和 Python Demo 遵循同一预下单流程：服务端签名、调用 `POST /dspay/public/order/create`、跳转 `checkoutUrl`、验证回调、主动查询。
 
@@ -641,9 +651,9 @@ Node.js、PHP 和 Python Demo 遵循同一预下单流程：服务端签名、�
 
 | 状态 | 含义 | 是否发回调 | 自动检测 | 可手动补单 |
 |------|------|-----------|---------|-----------|
-| `CREATED` | 订单已创建；可能尚未确认支付方式，也可能已锁定 | ❌ 不发送 | 支付字段完整时扫描 | 支付字段完整时允许 |
-| `TIMEOUT` | 创建后 10min 未完成支付（仍可继续等待到账） | ❌ 不发送 | 支付字段完整时扫描 | 支付字段完整时允许 |
-| `CLOSED` | 40min 未支付，系统关闭 | ✅ 发 `CLOSED` | ❌ **停止** | ✅（重开，`reopened=true`） |
+| `CREATED` | 订单已创建；可能尚未确认支付方式，也可能已锁定 | ❌ 不发送 | 支付字段完整时扫描 | 已确认 Pay Now 且支付字段完整时允许 |
+| `TIMEOUT` | 创建后 10min 未完成支付（仍可继续等待到账） | ❌ 不发送 | 支付字段完整时扫描 | 已确认 Pay Now 且支付字段完整时允许 |
+| `CLOSED` | 40min 未支付，系统关闭 | ✅ 发 `CLOSED` | ❌ **停止** | 已确认 Pay Now、支付字段完整且 `canSupplement=true` 时允许（重开，`reopened=true`） |
 | `COMPLETED` | 链上到账 / 补单完成 | ✅ 发 `COMPLETED` | — | — |
 | `REFUNDED` | 商户退款成功 | ✅ 发 `REFUNDED` | — | — |
 
@@ -1076,6 +1086,8 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 6.1 订单列表与统计
 
+- 对账可在后台按商户订单号 `outOrderNo` 精确筛选。
+
 订单列表、统计报表均在 **[DSPay 后台](https://mcashier.ds.pro/login/) UI** 查看，支持按时间筛选、金额汇总、7 日明细等。
 
 > 订单统计按**创建时间维度**展示。跨时区运营注意"今日"定义以商户后台设置的时区为准。
@@ -1143,6 +1155,8 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 
 ### 7.1 超时未支付（TIMEOUT）
 
+- 当前收银台将 TIMEOUT／CLOSED 显示为过期结果；到期最终查询失败也可能显示过期并停止轮询。页面提示不代表最终支付失败，商户须以有效回调／主动查询确认。TIMEOUT 支付字段完整时后端仍检测，CLOSED 后自动检测停止。成功配置 `successRedirectUrl` 时倒计时 3 秒跳转；超时返回由用户点击。
+
 **现象**：用户下单后 10 分钟内未付款，订单进入 `TIMEOUT` 状态。
 
 **[DSPay](#term-dspay) 行为**：
@@ -1150,14 +1164,16 @@ merchantNo=DSM2080260022215368706&orderNo=1949695024925671424&timestamp=17872925
 - ✅ 订单仍可继续等待付款 + 链上自动检测
 - 已在超时前确认支付方式的订单仍会继续链上检测，直至 CLOSED
 - 始终未确认支付方式的订单不能在超时后重新启动支付
-- 配置 `returnUrl` 时，DSPay 收银台在 TIMEOUT 场景跳转该地址；未配置时停留超时页
+- 配置 `returnUrl` 时，DSPay 收银台在 TIMEOUT 结果页提供按钮，由用户点击返回该地址；未配置时停留超时页
 
 **商户处理**：
-- 前端展示"支付超时，仍可继续支付"提示
-- DSPay 收银台前端会自动轮询订单状态
+- 前端提示支付超时、到账仍需确认；已付款用户等待确认，避免重复付款；未付款用户返回商户页面重新确认订单
+- 当前收银台显示超时结果后停止正常轮询；商户应通过主动查询确认最终状态
 - 不要依赖回调感知 TIMEOUT
 
 ### 7.2 CLOSED 后链上到账（补单流程）
+
+- 补单适用于满足条件的 `CREATED`／`TIMEOUT`／`CLOSED` 订单：已确认 Pay Now、支付字段完整，且链上交易时间严格晚于订单创建时间；相等、早于或缺失均不通过。后台以 `canSupplement` 控制资格；提交时仍会重新校验。仅 CLOSED 补单重开时 `reopened=true`。金额可不匹配，但必须是有效的正数到账交易。
 
 **现象**：订单进入 `CLOSED` 后，用户才完成链上转账，链上确实到账了。
 
@@ -1265,7 +1281,7 @@ ngrok http 8080
 | 直接对raw body计算HMAC | 解析JSON后按统一ASCII规则生成规范串，再计算HMAC |
 | secret 被 Base64 解码了 | 直接用 secret 字符串，不 Base64 解码 |
 | 时间偏差大（防重放拦截） | 检查 `timestamp` 是否在 5 分钟内 |
-| 密钥已 regenerate（旧密钥） | 在 [DSPay 后台](https://mcashier.ds.pro/login/)查看最新密钥 |
+| 密钥已 regenerate（旧密钥） | 使用创建／轮换时保存的密钥；遗失后在后台轮换，并同步更新商户服务端配置 |
 
 ### 8.6 ⚠️ 坑点（3 条）
 
@@ -1320,10 +1336,13 @@ A: 当前选择的链不在支持范围内。让用户返回收银台重新选�
 **Q: 用户点击 Pay Now 后提示 [`50610`](#error-50610)/[`50611`](#error-50611)/[`50612`](#error-50612)？**
 A: [`50610`](#error-50610) `ORDER_CREATE_BUSY` 表示当前并发繁忙；保持同一订单和支付选择稍后重试，它不表示尾数槽位已经耗尽。[`50611`](#error-50611) `SUFFIX_EXHAUSTED` 表示当前相同支付组合、收款地址和原始金额下没有可用尾数；立即重试通常无效，需等待待支付订单完成或关闭后再试。[`50612`](#error-50612) `SUFFIX_PRECISION_SATURATED` 表示原始金额超过 2 位小数，无法在固定 6 位精度内保留 4 位尾数空间。
 
+**Q: 收银台链接缺少令牌或返回 401？**
+A: 使用创建接口最新响应中的完整 `checkoutUrl`，保留全部查询参数。丢失令牌、令牌失效或与订单不匹配会在临时访问校验阶段失败；这与业务码 `50616`（订单查看期超限）不同。不要仅复制路径或替换订单号。
+
 ### 9.4 回调类
 
 **Q: 回调一直验签失败？**
-A: 90% 是 payload 被 JSON 反序列化后重新序列化导致字段顺序变化。必须用 HTTP body 原始字符串验签，不能用反序列化后的对象再 `toJson()`。
+A: 解析 JSON，排除 `signature` 和 null 字段，其余字段按参数名 ASCII 升序拼接规范串；对象／数组使用规范 JSON，再计算 HMAC-SHA256。不要对 raw body 直接验签。
 
 **Q: 回调一直重试怎么办？**
 A: 检查响应是否符合 `{"code":"SUCCESS"}` 严格格式。`code` 必须是大写字符串 `"SUCCESS"`，数字 200 / 小写 / 嵌套都不接受。
@@ -1417,6 +1436,7 @@ Node.js 接入只维护一份权威实现：[`Demo/backend/nodejs`](../Demo/back
 |------|------|------|
 | <a id="error-50501"></a>50501 | MERCHANT_NOT_FOUND | 商户不存在 |
 | <a id="error-50502"></a>50502 | MERCHANT_DISABLED | 商户已被禁用 |
+| <a id="error-50504"></a>50504 | NOTIFY_URL_NOT_PUBLIC | 保存回调配置时公网地址预检失败 |
 | <a id="error-50503"></a>50503 | API_SECRET_DISABLED | 商户 API 密钥已冻结（回调停发，创建订单和主动查询等签名请求报错） |
 
 #### 订单相关（506xx）
@@ -1430,7 +1450,7 @@ Node.js 接入只维护一份权威实现：[`Demo/backend/nodejs`](../Demo/back
 | <a id="error-50610"></a>50610 | ORDER_CREATE_BUSY | 当前并发繁忙；保持同一请求稍后重试 |
 | <a id="error-50611"></a>50611 | SUFFIX_EXHAUSTED | 当前相同支付组合、收款地址和原始金额下没有可用尾数；等待待支付订单完成或关闭后再试 |
 | <a id="error-50612"></a>50612 | SUFFIX_PRECISION_SATURATED | 原始金额超过 2 位小数，无法在固定 6 位精度内保留 4 位尾数空间 |
-| <a id="error-50613"></a>50613 | ORDER_SIGNATURE_INVALID | 创建订单或主动查询的签名校验失败 |
+| <a id="error-50613"></a>50613 | ORDER_SIGNATURE_INVALID | 签名校验失败；创建接口也用此码统一表示未知／已删除商户或未配置密钥，验签通过后才返回密钥冻结／商户禁用状态 |
 | <a id="error-50614"></a>50614 | ORDER_TIMESTAMP_EXPIRED | 创建订单的时间戳超出 ±5 分钟窗口 |
 | <a id="error-50616"></a>50616 | CASHIER_LINK_VIEW_EXPIRED | 收银台链接超过查看期限（默认创建后 180 天） |
 | <a id="error-50617"></a>50617 | ORDER_QUERY_TIMESTAMP_EXPIRED | 主动查询的时间戳超出 ±5 分钟窗口 |

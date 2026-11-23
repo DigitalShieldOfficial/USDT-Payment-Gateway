@@ -3,13 +3,13 @@
   <rect width="1800" height="300" rx="24" fill="#fbfcff"/>
   <g transform="translate(35 72)"><rect class="b" width="235" height="125" rx="16"/><text class="t" x="117" y="51">登录商户后台</text><text class="s" x="117" y="82">配置收款地址与 Key</text></g>
   <path class="a" d="M280 135H340"/>
-  <g transform="translate(350 72)"><rect class="b" width="260" height="125" rx="16"/><text class="t" x="130" y="51">服务端预下单</text><text class="s" x="130" y="82">POST /public/order/create</text></g>
+  <g transform="translate(350 72)"><rect class="b" width="260" height="125" rx="16"/><text class="t" x="130" y="51">服务端预下单</text><text class="s" x="130" y="82">/dspay/public/order/create</text></g>
   <path class="a" d="M620 135H680"/>
-  <g transform="translate(690 72)"><rect class="b" width="245" height="125" rx="16"/><text class="t" x="122" y="51">跳转收银台</text><text class="s" x="122" y="82">checkoutUrl</text></g>
+  <g transform="translate(690 72)"><rect class="b" width="245" height="125" rx="16"/><text class="t" x="122" y="51">跳转收银台</text><text class="s" x="122" y="82">完整链接（保留令牌）</text></g>
   <path class="a" d="M945 135H1005"/>
   <g transform="translate(1015 72)"><rect class="b" width="245" height="125" rx="16"/><text class="t" x="122" y="51">用户 Pay Now</text><text class="s" x="122" y="82">锁定网络、代币和地址</text></g>
   <path class="a" d="M1270 135H1330"/>
   <g transform="translate(1340 72)"><rect class="b" width="210" height="125" rx="16"/><text class="t" x="105" y="51">链上支付</text><text class="s" x="105" y="82">DSPay 检测到账</text></g>
   <path class="a" d="M1560 135H1620"/>
   <g transform="translate(1630 72)"><rect class="b" width="140" height="125" rx="16"/><text class="t" x="70" y="43">COMPLETED</text><text class="s" x="70" y="76">回调 + 查询</text></g>
-</svg>
+<text class="s" x="900" y="255">回调可选，建议启用；主动查询兜底</text></svg>

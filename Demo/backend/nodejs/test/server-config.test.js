@@ -8,7 +8,7 @@ const path = require('node:path');
 const server = path.resolve(__dirname, '../src/server.js');
 
 async function startupApi(value) {
-    const env = { ...process.env, PORT: '0', PUBLIC_BASE_URL: 'http://localhost:3000' };
+    const env = { ...process.env, MERCHANT_NO: 'DSM001', API_SECRET: 'demo-secret', PORT: '0', PUBLIC_BASE_URL: 'http://localhost:3000' };
     delete env.DSPAY_BASE_URL;
     if (value !== undefined) env.DSPAY_BASE_URL = value;
     const child = spawn(process.execPath, [server], { env, stdio: ['ignore', 'pipe', 'pipe'] });

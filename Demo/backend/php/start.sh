@@ -19,7 +19,7 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 if ! command -v php >/dev/null 2>&1; then
-    echo "PHP CLI not found. Install PHP 7.4 or newer (php-cli) before starting." >&2
+    echo "PHP CLI not found. Install PHP 8.1 or newer (php-cli) before starting." >&2
     exit 1
 fi
 
@@ -72,6 +72,7 @@ export DSPAY_BASE_URL MERCHANT_NO API_SECRET PORT
 echo "Starting server..."
 
 cd "$ROOT"
+php -r 'require "config.php";'
 mkdir -p "$LOG_DIR"
 printf '\n=== Starting %s ===\n' "$(date)" >> "$LOG_FILE"
 LOG_START_LINE=$(wc -l < "$LOG_FILE")
@@ -90,7 +91,7 @@ for ((attempt = 0; attempt < 30; attempt++)); do
         echo "Local callback endpoint: $LOCAL_BASE_URL/notify (not reachable by DSPay)"
         echo "Next: open $LOCAL_BASE_URL/ in your browser."
         echo "For public access: run ngrok http $PORT, or proxy nginx to port $PORT."
-        echo "Open the public URL to create orders; payment return links follow that request URL."
+        echo "Optional: set PUBLIC_BASE_URL to your trusted public origin for payment return links; otherwise links are omitted."
         echo "Merchant Portal callback URL: <your public URL>/notify"
         echo "Example: https://your-name.ngrok-free.dev/notify"
         echo "Keep the tunnel running; update the portal if the public URL changes."

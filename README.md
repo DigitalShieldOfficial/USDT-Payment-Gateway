@@ -104,7 +104,7 @@ The mock merchant demo lets you experience the complete DS-Pay payment integrati
 
 [View More Demos](./Demo)
 
-Demo baselines: Node.js `18.20.8` + npm `10.8.2`, JDK 8+, PHP 5.6+, Python 3.10+, and a modern browser supporting `crypto.randomUUID()`. Only one Node.js version is needed. See [Tested runtimes](./Demo/README.md#tested-runtimes) for exact validated versions and dependency details.
+Demo baselines: Node.js `>=18.20.8` (22 / 24 LTS recommended), JDK 8+ (21 / 25 LTS recommended), PHP 8.1+ (PHP 7.4 only with OpenSSL 4 builds), Python 3.10+ (3.12+ recommended), and a modern browser supporting `crypto.randomUUID()`. See [Tested runtimes](./Demo/README.md#tested-runtimes) for exact validated versions and dependency details.
 
 
 ## Contact Us
@@ -119,3 +119,5 @@ For integration support, issue feedback, or partnership inquiries, feel free to 
 | X Official | https://x.com/DigitShield_HQ |
 | X Chinese | https://x.com/DigitShield_ZH |
 | Email | service@ds.pro |
+
+Integration note: save the payment Key (`apiSecret`) when created or rotated; it is disclosed only once. Redirect to the complete returned `checkoutUrl`, preserving its `x-digitalshield-temp-token` query parameter. Webhooks are optional at API level; enable them in production with signed queries as fallback.

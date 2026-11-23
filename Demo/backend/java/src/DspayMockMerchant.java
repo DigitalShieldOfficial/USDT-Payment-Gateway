@@ -34,8 +34,10 @@ public class DspayMockMerchant {
             System.getenv("PORT") == null ? "3000" : System.getenv("PORT")));
     static final String DSPAY_BASE = apiBase(System.getProperty("dspayBase",
             System.getenv("DSPAY_BASE_URL") == null ? "https://pay-api.ds.pro" : System.getenv("DSPAY_BASE_URL")));
-    static final String MERCHANT_NO = System.getProperty("merchantNo", "change-me");
+    static final String MERCHANT_NO = required(System.getProperty("merchantNo", System.getenv("MERCHANT_NO")), "MERCHANT_NO / -DmerchantNo");
     static final String API_SECRET = apiSecret();
+    static final String PUBLIC_BASE_URL = System.getenv("PUBLIC_BASE_URL") == null ? null : origin(System.getenv("PUBLIC_BASE_URL"), "PUBLIC_BASE_URL");
+    static final int MAX_CALLBACK_BYTES = 64 * 1024;
     /** Serve Demo/frontend by default; -DfrontEndDir overrides FRONT_END_DIR. */
     static final Path FRONT_END_DIR = frontEndDir();
 
@@ -103,7 +105,7 @@ public class DspayMockMerchant {
 
     static String apiSecret() {
         String value = System.getenv("API_SECRET");
-        return value == null || value.isEmpty() ? System.getProperty("apiSecret", "change-me") : value;
+        return required(value == null ? System.getProperty("apiSecret") : value, "API_SECRET / -DapiSecret");
     }
 
     static void logEvent(String event, String data) {
@@ -116,18 +118,9 @@ public class DspayMockMerchant {
         logEvent("DEMO_REQUEST", exchange.getRequestMethod() + " " + exchange.getRequestURI().toString());
     }
 
-    static String requestOrigin(HttpExchange exchange) {
-        boolean local = exchange.getRemoteAddress().getAddress().isLoopbackAddress();
-        String host = exchange.getRequestHeaders().getFirst("Host");
-        String proto = "http";
-        if (local) {
-            String forwardedHost = exchange.getRequestHeaders().getFirst("X-Forwarded-Host");
-            String forwardedProto = exchange.getRequestHeaders().getFirst("X-Forwarded-Proto");
-            if (forwardedHost != null) host = forwardedHost;
-            if (forwardedProto != null) proto = forwardedProto;
-        }
-        if (!("http".equals(proto) || "https".equals(proto))) throw new IllegalArgumentException("X-Forwarded-Proto must be http or https");
-        return origin(proto + "://" + host, "Request origin");
+    static String required(String value, String field) {
+        if (value == null || value.isEmpty()) throw new IllegalArgumentException(field + " is required");
+        return value;
     }
 
     static Map<String,String> parameters(HttpExchange exchange, String... allowed) {
@@ -167,15 +160,17 @@ public class DspayMockMerchant {
             if (args.containsKey("productPriceCurrency") && !"USD".equals(args.get("productPriceCurrency"))) throw new IllegalArgumentException("productPriceCurrency must be USD for this storefront");
             if (!args.containsKey("payAmount")) throw new IllegalArgumentException("payAmount is required; minimum 0.01");
             String number = args.containsKey("outOrderNo") ? identifier(args.get("outOrderNo"), "outOrderNo") : "DEMO-" + UUID.randomUUID().toString().replace("-", "");
-            String base = requestOrigin(exchange);
+            String base = PUBLIC_BASE_URL;
             Map<String,Object> order = new TreeMap<>();
             order.put("merchantNo", MERCHANT_NO); order.put("outOrderNo", number);
             order.put("payAmount", amount(args.get("payAmount"), "payAmount", 12, 2, true));
             Map<String,Object> attach = new TreeMap<>(); attach.put("demo", "java"); attach.put("customerId", "CUST-1001");
             order.put("attach", attach); order.put("allowedPaymentMethods", new java.util.ArrayList<>());
             order.put("timestamp", System.currentTimeMillis());
-            order.put("returnUrl", base + "/payment/return?outOrderNo=" + enc(number));
-            order.put("successRedirectUrl", base + "/payment/success?outOrderNo=" + enc(number));
+            if (base != null) {
+                order.put("returnUrl", base + "/payment/return?outOrderNo=" + enc(number));
+                order.put("successRedirectUrl", base + "/payment/success?outOrderNo=" + enc(number));
+            }
             if (args.containsKey("productPrice")) { order.put("productPrice", amount(args.get("productPrice"), "productPrice", 14, 6, false)); order.put("productPriceCurrency", "USD"); }
             if (args.containsKey("productPriceCurrency")) order.put("productPriceCurrency", args.get("productPriceCurrency"));
             if (args.containsKey("productId")) {
@@ -220,6 +215,7 @@ public class DspayMockMerchant {
         if (!"POST".equals(exchange.getRequestMethod())) { send(exchange, 405, "{\"code\":\"FAIL\"}"); return; }
         String raw;
         try { raw = decodeUtf8(readAll(exchange.getRequestBody())); }
+        catch (CallbackTooLarge error) { send(exchange, 413, "{\"code\":\"FAIL\",\"msg\":\"Callback body exceeds 65536 bytes\"}"); return; }
         catch (IllegalArgumentException error) { send(exchange, 400, "{\"code\":\"FAIL\",\"msg\":\"Callback must be UTF-8 JSON\"}"); return; }
         logEvent("CALLBACK_REQUEST", raw);
         if (!verifyCallback(raw, exchange.getRequestHeaders().getFirst("X-DSPay-Signature"), System.currentTimeMillis())) {
@@ -268,12 +264,17 @@ public class DspayMockMerchant {
         }
     }
 
-    /** Read an input stream without changing its bytes. */
+    static class CallbackTooLarge extends IOException {}
+
+    /** Read a callback without changing its bytes, enforcing a fixed memory bound. */
     static byte[] readAll(InputStream in) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
         int n;
-        while ((n = in.read(buffer)) != -1) out.write(buffer, 0, n);
+        while ((n = in.read(buffer)) != -1) {
+            if (out.size() + n > MAX_CALLBACK_BYTES) throw new CallbackTooLarge();
+            out.write(buffer, 0, n);
+        }
         return out.toByteArray();
     }
 
